@@ -350,12 +350,12 @@ const HockeyTeamBalancer = () => {
         usage[p.team][p.assignedSize] = (usage[p.team][p.assignedSize] || 0) + 1;
     });
     return usage;
-  }, [players]);
+  }, [players, sizes]);
 
   const jerseyRemaining = useMemo(() => ({
     team1: Object.fromEntries(sizes.map(s => [s, inventory.team1[s] - (jerseyUsage.team1[s] || 0)])),
     team2: Object.fromEntries(sizes.map(s => [s, inventory.team2[s] - (jerseyUsage.team2[s] || 0)])),
-  }), [inventory, jerseyUsage]);
+  }), [inventory, jerseyUsage, sizes]);
 
   // ── Swap logic ────────────────────────────────────────────────────────────
   const handlePlayerClick = (clickedId) => {
