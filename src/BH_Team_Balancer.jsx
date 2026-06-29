@@ -18,10 +18,14 @@ const defaultClassData = () => ({
   friendGroups: [],
 });
 
+const SIZES = ['M', 'L', 'XL', '2XL', 'G2XL'];
+const SKATER_SIZES = ['M', 'L', 'XL', '2XL'];
+const SOCK_SIZES = ['L 30"', 'XL 32"'];
+
 const HockeyTeamBalancer = () => {
-  const sizes = ['M', 'L', 'XL', '2XL', 'G2XL'];
-  const skaterSizes = ['M', 'L', 'XL', '2XL'];
-  const sockSizes = ['L 30"', 'XL 32"'];
+  const sizes = SIZES;
+  const skaterSizes = SKATER_SIZES;
+  const sockSizes = SOCK_SIZES;
 
   // ── Seasons / Classes ─────────────────────────────────────────────────────
   const [seasons, setSeasons] = useState([
