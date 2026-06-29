@@ -1,3 +1,4 @@
+/* global XLSX */
 import React, { useState, useMemo, useEffect } from 'react';
 import { Users, Shirt, Star, AlertCircle, Shuffle, X, Upload, Download, FileSpreadsheet, FileText, Plus, ChevronDown } from 'lucide-react';
 
