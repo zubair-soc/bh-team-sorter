@@ -5,12 +5,12 @@ import { Users, Shirt, Star, AlertCircle, Shuffle, X, Upload, Download, FileSpre
 const defaultClassData = () => ({
   teamNames: { team1: 'Teal Tanglers', team2: 'Orange Crush' },
   inventory: {
-    team1: { M: 2, L: 6, XL: 5, '2XL': 4, 'G2XL': 2 },
-    team2: { M: 2, L: 6, XL: 5, '2XL': 4, 'G2XL': 2 }
+    team1: { M: 0, L: 8, XL: 6, '2XL': 3, 'G2XL': 2 },
+    team2: { M: 0, L: 8, XL: 6, '2XL': 3, 'G2XL': 2 }
   },
   sockInventory: {
-    team1: { 'L 30"': 10, 'XL 32"': 10 },
-    team2: { 'L 30"': 10, 'XL 32"': 10 }
+    team1: { 'L 30"': 15, 'XL 32"': 4 },
+    team2: { 'L 30"': 15, 'XL 32"': 4 }
   },
   players: [
     { id: 1, name: '', rating: 5, preferredSize: 'M', isGoalie: false, isIR: false, isWoman: false, team: null }
