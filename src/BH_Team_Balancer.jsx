@@ -280,25 +280,38 @@ const HockeyTeamBalancer = () => {
     teamPlayers.filter(p => !p.isGoalie && p.isIR).sort((a, b) => skaterSizes.indexOf(a.preferredSize) - skaterSizes.indexOf(b.preferredSize)).forEach(assignSkater);
   };
 
-  // ── Balance algorithm (goalies excluded from rating balance) ───────────────
+  // ── Balance algorithm (goalies excluded from rating balance, count-aware) ──
   const balanceTeams = () => {
     const unassigned = players.filter(p => !p.team);
     const assignments = {};
     players.forEach(p => { if (p.team) assignments[p.id] = p.team; });
     const unassignedIds = new Set(unassigned.map(p => p.id));
 
-    // Only count SKATER ratings for balance
     const skaterRatingOf = (team) => Object.entries(assignments)
       .filter(([, t]) => t === team)
       .reduce((s, [id]) => {
         const p = players.find(p => p.id === parseInt(id));
         return s + (p.isGoalie ? 0 : p.rating);
       }, 0);
+    const countOf = (team) => Object.values(assignments).filter(t => t === team).length;
     const womenOf = (team) => Object.entries(assignments)
       .filter(([, t]) => t === team)
       .reduce((s, [id]) => s + (players.find(p => p.id === parseInt(id)).isWoman ? 1 : 0), 0);
 
-    // Friend groups (skater ratings only for balance decision)
+    // Decide which team a player/group should go to: prioritize keeping
+    // roster SIZE close, then break ties by skater rating.
+    const pickTeam = (incomingCount = 1) => {
+      const c1 = countOf('team1'), c2 = countOf('team2');
+      const sizeDiff = (c1 + incomingCount) - c2;
+      const sizeDiffAlt = (c2 + incomingCount) - c1;
+      // If adding to team1 would make the gap worse than adding to team2, go to team2 (and vice versa)
+      if (Math.abs(sizeDiff) > Math.abs(sizeDiffAlt)) return 'team2';
+      if (Math.abs(sizeDiffAlt) > Math.abs(sizeDiff)) return 'team1';
+      // Sizes would end up equally close either way — break tie by rating
+      return skaterRatingOf('team1') <= skaterRatingOf('team2') ? 'team1' : 'team2';
+    };
+
+    // Friend groups (skater ratings only for balance decision, count-aware)
     const groups = friendGroups
       .filter(g => g.every(id => unassignedIds.has(id)))
       .map(g => ({
@@ -308,25 +321,26 @@ const HockeyTeamBalancer = () => {
       .sort((a, b) => b.rating - a.rating);
 
     groups.forEach(g => {
-      const t = womenOf('team1') < womenOf('team2') ? 'team1'
-        : womenOf('team2') < womenOf('team1') ? 'team2'
-        : skaterRatingOf('team1') <= skaterRatingOf('team2') ? 'team1' : 'team2';
+      const w1 = womenOf('team1'), w2 = womenOf('team2');
+      const t = w1 !== w2
+        ? (w1 < w2 ? 'team1' : 'team2')
+        : pickTeam(g.playerIds.length);
       g.playerIds.forEach(id => { assignments[id] = t; unassignedIds.delete(id); });
     });
 
     const remaining = unassigned.filter(p => unassignedIds.has(p.id));
 
-    // Goalies: alternate, not rating-based
+    // Goalies: strictly alternate, one per team, not rating-based
     const goalies = remaining.filter(p => p.isGoalie);
     goalies.forEach((g, i) => { assignments[g.id] = i % 2 === 0 ? 'team1' : 'team2'; });
 
-    // Women skaters
+    // Women skaters — alternate by rating, but respect count balance
     const women = remaining.filter(p => !p.isGoalie && p.isWoman).sort((a, b) => b.rating - a.rating);
-    women.forEach((w, i) => { assignments[w.id] = i % 2 === 0 ? 'team1' : 'team2'; });
+    women.forEach((w) => { assignments[w.id] = pickTeam(1); });
 
-    // Men skaters — greedy by skater rating
+    // Men skaters — count-aware, rating as tiebreaker
     const men = remaining.filter(p => !p.isGoalie && !p.isWoman).sort((a, b) => b.rating - a.rating);
-    men.forEach(p => { assignments[p.id] = skaterRatingOf('team1') <= skaterRatingOf('team2') ? 'team1' : 'team2'; });
+    men.forEach(p => { assignments[p.id] = pickTeam(1); });
 
     // Jersey allocation
     const t1Inv = { ...inventory.team1 };
@@ -361,7 +375,44 @@ const HockeyTeamBalancer = () => {
     team2: Object.fromEntries(sizes.map(s => [s, inventory.team2[s] - (jerseyUsage.team2[s] || 0)])),
   }), [inventory, jerseyUsage, sizes]);
 
-  // ── Swap logic ────────────────────────────────────────────────────────────
+  // ── Re-run jersey allocation for a single team using CURRENT assignedSize
+  // as a "soft preference" first (so players keep their jersey if it's still
+  // available), then fill gaps using normal preferred-size logic. This fixes
+  // players getting stuck on TBD after inventory frees up from other moves.
+  const reallocateTeamJerseys = (teamPlayers, inv) => {
+    const invCopy = { ...inv };
+    const result = teamPlayers.map(p => ({ ...p }));
+
+    // Pass 1: keep players in their current assigned size if it's not TBD
+    // and still available (locks in existing happy assignments first)
+    const locked = new Set();
+    result.forEach(p => {
+      if (p.assignedSize && p.assignedSize !== 'TBD' && invCopy[p.assignedSize] > 0) {
+        invCopy[p.assignedSize]--;
+        locked.add(p.id);
+      }
+    });
+
+    // Pass 2: reassign everyone NOT locked using the normal allocation order
+    const unlocked = result.filter(p => !locked.has(p.id));
+    const assignGoalie = (p) => { p.assignedSize = invCopy['G2XL'] > 0 ? (invCopy['G2XL']--, 'G2XL') : 'TBD'; };
+    const assignSkater = (p) => {
+      const si = skaterSizes.indexOf(p.preferredSize);
+      let done = false;
+      for (let i = si; i < skaterSizes.length; i++) {
+        if (invCopy[skaterSizes[i]] > 0) { p.assignedSize = skaterSizes[i]; invCopy[skaterSizes[i]]--; done = true; break; }
+      }
+      if (!done) p.assignedSize = 'TBD';
+    };
+    unlocked.filter(p => p.isGoalie && !p.isIR).forEach(assignGoalie);
+    unlocked.filter(p => !p.isGoalie && !p.isIR).sort((a, b) => skaterSizes.indexOf(a.preferredSize) - skaterSizes.indexOf(b.preferredSize)).forEach(assignSkater);
+    unlocked.filter(p => p.isGoalie && p.isIR).forEach(assignGoalie);
+    unlocked.filter(p => !p.isGoalie && p.isIR).sort((a, b) => skaterSizes.indexOf(a.preferredSize) - skaterSizes.indexOf(b.preferredSize)).forEach(assignSkater);
+
+    return result;
+  };
+
+  // ── Swap logic (full team-level jersey re-allocation, nobody stuck on TBD) ─
   const handlePlayerClick = (clickedId) => {
     if (!selectedForSwap) { setSelectedForSwap(clickedId); return; }
     if (selectedForSwap === clickedId) { setSelectedForSwap(null); return; }
@@ -370,22 +421,42 @@ const HockeyTeamBalancer = () => {
     if (!a || !b) { setSelectedForSwap(null); return; }
 
     const aNewTeam = b.team, bNewTeam = a.team;
-    const usageAfter = { team1: { ...jerseyUsage.team1 }, team2: { ...jerseyUsage.team2 } };
-    if (a.team && a.assignedSize && a.assignedSize !== 'TBD') usageAfter[a.team][a.assignedSize]--;
-    if (b.team && b.assignedSize && b.assignedSize !== 'TBD') usageAfter[b.team][b.assignedSize]--;
 
-    const aCanKeep = a.assignedSize && a.assignedSize !== 'TBD' && aNewTeam &&
-      (inventory[aNewTeam][a.assignedSize] - (usageAfter[aNewTeam][a.assignedSize] || 0)) > 0;
-    const bCanKeep = b.assignedSize && b.assignedSize !== 'TBD' && bNewTeam &&
-      (inventory[bNewTeam][b.assignedSize] - (usageAfter[bNewTeam][b.assignedSize] || 0)) > 0;
+    // Build the post-swap player list, then reallocate jerseys per team from scratch
+    const swapped = players.map(p => {
+      if (p.id === a.id) return { ...p, team: aNewTeam };
+      if (p.id === b.id) return { ...p, team: bNewTeam };
+      return p;
+    });
+
+    const t1Players = reallocateTeamJerseys(swapped.filter(p => p.team === 'team1'), inventory.team1);
+    const t2Players = reallocateTeamJerseys(swapped.filter(p => p.team === 'team2'), inventory.team2);
 
     setPlayers(prev => prev.map(p => {
-      if (p.id === a.id) return { ...p, team: aNewTeam, assignedSize: aCanKeep ? a.assignedSize : 'TBD' };
-      if (p.id === b.id) return { ...p, team: bNewTeam, assignedSize: bCanKeep ? b.assignedSize : 'TBD' };
-      return p;
+      const tp = t1Players.find(x => x.id === p.id) || t2Players.find(x => x.id === p.id);
+      return tp ? { ...p, team: tp.team, assignedSize: tp.assignedSize } : p;
     }));
     setSelectedForSwap(null);
   };
+
+  // ── One-way move (no swap-back required) ───────────────────────────────────
+  const movePlayerToTeam = (playerId, newTeam) => {
+    const moved = players.map(p => p.id === playerId ? { ...p, team: newTeam } : p);
+    const t1Players = reallocateTeamJerseys(moved.filter(p => p.team === 'team1'), inventory.team1);
+    const t2Players = reallocateTeamJerseys(moved.filter(p => p.team === 'team2'), inventory.team2);
+    setPlayers(prev => prev.map(p => {
+      const tp = t1Players.find(x => x.id === p.id) || t2Players.find(x => x.id === p.id);
+      return tp ? { ...p, team: tp.team, assignedSize: tp.assignedSize } : p;
+    }));
+    setSelectedForSwap(null);
+  };
+
+  // ── Manual jersey override ──────────────────────────────────────────────────
+  const setManualJersey = (playerId, size) => {
+    setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, assignedSize: size } : p));
+  };
+
+
 
   // ── Stats (goalies excluded from rating totals) ────────────────────────────
   const stats = useMemo(() => {
@@ -776,7 +847,7 @@ const HockeyTeamBalancer = () => {
                     </span>
                     <button onClick={()=>setSelectedForSwap(null)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
                   </div>
-                : <p className="text-sm text-slate-500">Click a player to select, then click another to swap</p>
+                : <p className="text-sm text-slate-500">Click a player to swap, use → to move solo, or pick a jersey size directly</p>
               }
             </div>
 
@@ -820,6 +891,8 @@ const HockeyTeamBalancer = () => {
                         const sizedUp=assigned!=='TBD'&&assigned!==player.preferredSize;
                         const noSize=assigned==='TBD';
                         const isSelected=selectedForSwap===player.id;
+                        const otherTeam = team==='team1' ? 'team2' : 'team1';
+                        const jerseyOptions = player.isGoalie ? ['G2XL'] : skaterSizes;
                         return(
                           <div key={player.id} onClick={()=>handlePlayerClick(player.id)}
                             className={`p-3 rounded-lg cursor-pointer transition-all select-none
@@ -827,8 +900,8 @@ const HockeyTeamBalancer = () => {
                                 :selectedForSwap?'hover:ring-2 hover:ring-blue-300 hover:bg-blue-50'
                                 :gi>=0?groupColors[gi%groupColors.length]:'bg-slate-50 hover:bg-slate-100'}
                               ${gi>=0&&!isSelected?'border-2':'border border-slate-200'}`}>
-                            <div className="flex items-center justify-between">
-                              <div>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
                                 <p className="font-semibold text-slate-800">{player.name||`Player ${player.id}`}</p>
                                 <p className="text-xs text-slate-500 mt-0.5">
                                   {player.isGoalie?'Goalie':`⭐ ${player.rating}`}
@@ -836,14 +909,28 @@ const HockeyTeamBalancer = () => {
                                   {player.isIR&&<span className="text-red-500"> · IR</span>}
                                 </p>
                               </div>
-                              <div className="text-right">
-                                <span className={`text-sm font-bold px-2 py-1 rounded ${noSize?'bg-red-100 text-red-600':sizedUp?'bg-yellow-100 text-yellow-700':'bg-green-100 text-green-700'}`}>
-                                  {assigned}
-                                </span>
-                                {sizedUp&&<p className="text-xs text-slate-400 mt-0.5">wanted {player.preferredSize}</p>}
-                                {noSize&&<p className="text-xs text-red-400 mt-0.5">no jersey</p>}
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={assigned}
+                                  onClick={e=>e.stopPropagation()}
+                                  onChange={e=>{ e.stopPropagation(); setManualJersey(player.id, e.target.value); }}
+                                  className={`text-sm font-bold px-1.5 py-1 rounded border-0 cursor-pointer ${noSize?'bg-red-100 text-red-600':sizedUp?'bg-yellow-100 text-yellow-700':'bg-green-100 text-green-700'}`}
+                                  title="Manually set jersey size"
+                                >
+                                  <option value="TBD">TBD</option>
+                                  {jerseyOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <button
+                                  onClick={e=>{ e.stopPropagation(); movePlayerToTeam(player.id, otherTeam); }}
+                                  className="p-1.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-600 transition"
+                                  title={`Move to ${teamNames[otherTeam]} (no swap-back needed)`}
+                                >
+                                  →
+                                </button>
                               </div>
                             </div>
+                            {sizedUp&&<p className="text-xs text-slate-400 mt-1 text-right">wanted {player.preferredSize}</p>}
+                            {noSize&&<p className="text-xs text-red-400 mt-1 text-right">no jersey</p>}
                           </div>
                         );
                       })}
