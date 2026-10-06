@@ -14,6 +14,10 @@ const defaultClassData = () => ({
     team1: { 'L 30"': 15, 'XL 32"': 4 },
     team2: { 'L 30"': 15, 'XL 32"': 4 }
   },
+  jerseyNumbers: {
+    team1: { M: '', L: '', XL: '', '2XL': '', 'G2XL': '' },
+    team2: { M: '', L: '', XL: '', '2XL': '', 'G2XL': '' }
+  },
   players: [
     { id: crypto.randomUUID(), name: '', rating: 5, preferredSize: 'M', isGoalie: false, isWoman: false, team: null }
   ],
@@ -52,6 +56,7 @@ const HockeyTeamBalancer = () => {
   const [rosterLoaded, setRosterLoaded] = useState(false);
   const [hasAccess, setHasAccess] = useState(null);
   const [friendGroupsOpen, setFriendGroupsOpen] = useState(false);
+  const [jerseyNumbersOpen, setJerseyNumbersOpen] = useState({ team1:false, team2:false });
 
   const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
   const selectedClass = selectedSeason?.classes?.find(x => x.id === selectedClassId);
@@ -63,10 +68,11 @@ const HockeyTeamBalancer = () => {
     setClassStore(prev => ({ ...prev, [selectedClassId]: updater(prev[selectedClassId] ?? defaultClassData()) }));
   };
 
-  const { teamNames, inventory, sockInventory, players, friendGroups, teamColors = defaultClassData().teamColors } = currentData;
+  const { teamNames, inventory, sockInventory, jerseyNumbers = defaultClassData().jerseyNumbers, players, friendGroups, teamColors = defaultClassData().teamColors } = currentData;
   const setTeamNames = val => updateCurrent(d => ({ ...d, teamNames: typeof val === 'function' ? val(d.teamNames) : val }));
   const setInventory = val => updateCurrent(d => ({ ...d, inventory: typeof val === 'function' ? val(d.inventory) : val }));
   const setSockInventory = val => updateCurrent(d => ({ ...d, sockInventory: typeof val === 'function' ? val(d.sockInventory) : val }));
+  const setJerseyNumbers = val => updateCurrent(d => ({ ...d, jerseyNumbers: typeof val === 'function' ? val(d.jerseyNumbers || defaultClassData().jerseyNumbers) : val }));
   const setPlayers = val => updateCurrent(d => ({ ...d, players: typeof val === 'function' ? val(d.players) : val }));
   const setFriendGroups = val => updateCurrent(d => ({ ...d, friendGroups: typeof val === 'function' ? val(d.friendGroups) : val }));
   const setTeamColors = val => updateCurrent(d => ({ ...d, teamColors: typeof val === 'function' ? val(d.teamColors || defaultClassData().teamColors) : val }));
@@ -132,6 +138,7 @@ const HockeyTeamBalancer = () => {
       teamColors: { team1: klass.team1_color, team2: klass.team2_color },
       inventory: klass.inventory?.jerseys || defaultClassData().inventory,
       sockInventory: klass.inventory?.socks || defaultClassData().sockInventory,
+      jerseyNumbers: klass.inventory?.jersey_numbers || defaultClassData().jerseyNumbers,
       players: mappedPlayers,
       friendGroups: Array.from(groupMap.values()).filter(g => g.length >= 2),
     }}));
@@ -202,7 +209,7 @@ const HockeyTeamBalancer = () => {
       team2_name: defaults.teamNames.team2,
       team1_color: defaults.teamColors.team1,
       team2_color: defaults.teamColors.team2,
-      inventory: { jerseys: defaults.inventory, socks: defaults.sockInventory },
+      inventory: { jerseys: defaults.inventory, socks: defaults.sockInventory, jersey_numbers: defaults.jerseyNumbers },
       created_by: session.user.id
     }).select().single();
     if (error) return alert(error.message);
@@ -253,7 +260,7 @@ const HockeyTeamBalancer = () => {
           team2_name: teamNames.team2,
           team1_color: teamColors.team1,
           team2_color: teamColors.team2,
-          inventory: { jerseys: inventory, socks: sockInventory },
+          inventory: { jerseys: inventory, socks: sockInventory, jersey_numbers: jerseyNumbers },
           updated_at: new Date().toISOString()
         }).eq('id', selectedClassId),
         supabase.rpc('bh_save_class_roster', { p_class_id: selectedClassId, p_players: rosterPayload })
@@ -262,7 +269,7 @@ const HockeyTeamBalancer = () => {
       if (classError || rosterError) console.error(classError || rosterError);
     }, 650);
     return () => clearTimeout(timer);
-  }, [session?.user?.id, selectedClassId, rosterLoaded, teamNames, teamColors, inventory, sockInventory, players, friendGroups]);
+  }, [session?.user?.id, selectedClassId, rosterLoaded, teamNames, teamColors, inventory, sockInventory, jerseyNumbers, players, friendGroups]);
 
   // ── CSV Upload (supports [Config] + [Players] sections) ───────────────────
   const handleFileUpload = (event) => {
@@ -408,6 +415,15 @@ const HockeyTeamBalancer = () => {
   };
   const updateInventory     = (team, size, value) => setInventory(prev => ({ ...prev, [team]: { ...prev[team], [size]: Math.max(0, parseInt(value) || 0) } }));
   const updateSockInventory = (team, size, value) => setSockInventory(prev => ({ ...prev, [team]: { ...prev[team], [size]: Math.max(0, parseInt(value) || 0) } }));
+  const updateJerseyNumbers = (team, size, value) => setJerseyNumbers(prev => ({ ...prev, [team]: { ...prev[team], [size]: value } }));
+  const parseJerseyNumbers = (value) => String(value || '').split(/[,\s]+/).map(v=>v.trim()).filter(Boolean);
+  const jerseyNumberForPlayer = (player) => {
+    if (!player.team || !player.assignedSize || player.assignedSize === 'TBD') return '';
+    const list = parseJerseyNumbers(jerseyNumbers?.[player.team]?.[player.assignedSize]);
+    const sameSize = players.filter(p => p.team===player.team && p.assignedSize===player.assignedSize);
+    const idx = sameSize.findIndex(p => p.id===player.id);
+    return idx >= 0 ? (list[idx] || '') : '';
+  };
 
   // ── Friend Groups ─────────────────────────────────────────────────────────
   const addToNewGroup   = (id) => setNewGroup(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -608,9 +624,9 @@ const HockeyTeamBalancer = () => {
   const downloadAdminRoster = () => {
     const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2');
     let c=`HOCKEY ROSTER - ADMIN\nSeason/Class: ${seasonClassLabel}\nGenerated: ${new Date().toLocaleDateString()}\n\n================\nTEAM 1: ${teamNames.team1.toUpperCase()}\n================\n`;
-    t1.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
+    t1.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'}${jerseyNumberForPlayer(p)?` | #${jerseyNumberForPlayer(p)}`:''}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
     c+=`\nTotal: ${t1.length} | Skater Rating: ${stats.team1.skaterRating} | Avg: ${stats.team1.skaterCount>0?(stats.team1.skaterRating/stats.team1.skaterCount).toFixed(2):0}\n\n================\nTEAM 2: ${teamNames.team2.toUpperCase()}\n================\n`;
-    t2.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
+    t2.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'}${jerseyNumberForPlayer(p)?` | #${jerseyNumberForPlayer(p)}`:''}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
     c+=`\nTotal: ${t2.length} | Skater Rating: ${stats.team2.skaterRating} | Avg: ${stats.team2.skaterCount>0?(stats.team2.skaterRating/stats.team2.skaterCount).toFixed(2):0}\n`;
     const a=document.createElement('a'); a.href=`data:text/plain;base64,${btoa(unescape(encodeURIComponent(c)))}`;
     a.download='hockey_admin_roster.txt'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -750,6 +766,18 @@ const HockeyTeamBalancer = () => {
                     </div>
                   ))}
                 </div>
+                <button type="button" onClick={()=>setJerseyNumbersOpen(prev=>({...prev,[team]:!prev[team]}))} className="text-xs font-bold text-[#c8102e] hover:underline mb-3 flex items-center gap-1">
+                  {jerseyNumbersOpen[team]?'Hide jersey numbers':'Add jersey numbers'} <ChevronDown size={14} className={`transition-transform ${jerseyNumbersOpen[team]?'rotate-180':''}`}/>
+                </button>
+                {jerseyNumbersOpen[team]&&<div className="mb-4 p-3 rounded-xl bg-white border border-slate-200 space-y-2">
+                  <p className="text-xs text-slate-500 mb-2">Optional · comma-separated · any numbers</p>
+                  {sizes.map(size=>(
+                    <div key={size} className="flex items-center gap-2">
+                      <label className="w-16 text-xs font-bold text-slate-600">{size}</label>
+                      <input type="text" value={jerseyNumbers?.[team]?.[size]||''} onChange={e=>updateJerseyNumbers(team,size,e.target.value)} placeholder={`${inventory[team][size]} jersey${inventory[team][size]===1?'':'s'}`} className="flex-1 px-3 py-1.5 text-sm border rounded-lg" />
+                    </div>
+                  ))}
+                </div>}
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Socks</p>
                 <div className="space-y-2">
                   {sockSizes.map(size=>(
@@ -1004,6 +1032,7 @@ const HockeyTeamBalancer = () => {
                                 </button>
                               </div>
                             </div>
+                            {jerseyNumberForPlayer(player)&&<p className="text-xs font-bold text-slate-600 mt-1 text-right">Jersey #{jerseyNumberForPlayer(player)}</p>}
                             {sizedUp&&<p className="text-xs text-slate-400 mt-1 text-right">wanted {player.preferredSize}</p>}
                             {noSize&&<p className="text-xs text-red-400 mt-1 text-right">no jersey</p>}
                           </div>
