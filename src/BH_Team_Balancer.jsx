@@ -29,44 +29,14 @@ const HockeyTeamBalancer = () => {
   const skaterSizes = SKATER_SIZES;
   const sockSizes = SOCK_SIZES;
 
-  // ── Seasons / Classes ─────────────────────────────────────────────────────
-  const [seasons, setSeasons] = useState([
-    { id: 1, name: 'Summer 2026', classes: [
-      { id: 1, name: 'Sunday' },
-      { id: 2, name: 'Wednesday' },
-    ]},
-  ]);
-  const [selectedSeasonId, setSelectedSeasonId] = useState(1);
-  const [selectedClassId, setSelectedClassId] = useState(1);
+  const [seasons, setSeasons] = useState([]);
+  const [selectedSeasonId, setSelectedSeasonId] = useState(null);
+  const [selectedClassId, setSelectedClassId] = useState(null);
+  const [classStore, setClassStore] = useState({});
   const [showNewSeason, setShowNewSeason] = useState(false);
   const [showNewClass, setShowNewClass] = useState(false);
   const [newSeasonName, setNewSeasonName] = useState('');
   const [newClassName, setNewClassName] = useState('');
-
-  const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
-  const selectedClass = selectedSeason?.classes.find(c => c.id === selectedClassId);
-  const seasonClassLabel = `${selectedSeason?.name || ''} — ${selectedClass?.name || ''}`;
-
-  // ── Per-class data store ──────────────────────────────────────────────────
-  const [classStore, setClassStore] = useState({ 1: defaultClassData(), 2: defaultClassData() });
-
-  const currentData = classStore[selectedClassId] ?? defaultClassData();
-  const updateCurrent = (updater) => {
-    setClassStore(prev => ({
-      ...prev,
-      [selectedClassId]: updater(prev[selectedClassId] ?? defaultClassData())
-    }));
-  };
-
-  const { teamNames, inventory, sockInventory, players, friendGroups, teamColors = defaultClassData().teamColors } = currentData;
-  const setTeamNames    = (val) => updateCurrent(d => ({ ...d, teamNames: typeof val === 'function' ? val(d.teamNames) : val }));
-  const setInventory    = (val) => updateCurrent(d => ({ ...d, inventory: typeof val === 'function' ? val(d.inventory) : val }));
-  const setSockInventory= (val) => updateCurrent(d => ({ ...d, sockInventory: typeof val === 'function' ? val(d.sockInventory) : val }));
-  const setPlayers      = (val) => updateCurrent(d => ({ ...d, players: typeof val === 'function' ? val(d.players) : val }));
-  const setFriendGroups = (val) => updateCurrent(d => ({ ...d, friendGroups: typeof val === 'function' ? val(d.friendGroups) : val }));
-  const setTeamColors   = (val) => updateCurrent(d => ({ ...d, teamColors: typeof val === 'function' ? val(d.teamColors || defaultClassData().teamColors) : val }));
-
-  // ── UI state ──────────────────────────────────────────────────────────────
   const [newGroup, setNewGroup] = useState([]);
   const [uploadError, setUploadError] = useState('');
   const [selectedForSwap, setSelectedForSwap] = useState(null);
@@ -78,110 +48,217 @@ const HockeyTeamBalancer = () => {
   const [seasonBusy, setSeasonBusy] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [saveState, setSaveState] = useState('');
+  const [rosterLoaded, setRosterLoaded] = useState(false);
+
+  const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
+  const selectedClass = selectedSeason?.classes?.find(x => x.id === selectedClassId);
+  const seasonClassLabel = [selectedSeason?.name, selectedClass?.name].filter(Boolean).join(' — ');
+
+  const currentData = classStore[selectedClassId] ?? defaultClassData();
+  const updateCurrent = (updater) => {
+    if (!selectedClassId) return;
+    setClassStore(prev => ({ ...prev, [selectedClassId]: updater(prev[selectedClassId] ?? defaultClassData()) }));
+  };
+
+  const { teamNames, inventory, sockInventory, players, friendGroups, teamColors = defaultClassData().teamColors } = currentData;
+  const setTeamNames = val => updateCurrent(d => ({ ...d, teamNames: typeof val === 'function' ? val(d.teamNames) : val }));
+  const setInventory = val => updateCurrent(d => ({ ...d, inventory: typeof val === 'function' ? val(d.inventory) : val }));
+  const setSockInventory = val => updateCurrent(d => ({ ...d, sockInventory: typeof val === 'function' ? val(d.sockInventory) : val }));
+  const setPlayers = val => updateCurrent(d => ({ ...d, players: typeof val === 'function' ? val(d.players) : val }));
+  const setFriendGroups = val => updateCurrent(d => ({ ...d, friendGroups: typeof val === 'function' ? val(d.friendGroups) : val }));
+  const setTeamColors = val => updateCurrent(d => ({ ...d, teamColors: typeof val === 'function' ? val(d.teamColors || defaultClassData().teamColors) : val }));
 
   useEffect(() => { setNewGroup([]); setUploadError(''); setSelectedForSwap(null); }, [selectedClassId]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session ?? null); setAuthLoading(false); });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => { setSession(nextSession ?? null); setAuthLoading(false); });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession ?? null); setAuthLoading(false);
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
 
   const signIn = async (e) => {
-    e.preventDefault(); setLoginError('');
+    e.preventDefault();
+    setLoginError('');
     const { error } = await supabase.auth.signInWithPassword({ email: loginEmail.trim(), password: loginPassword });
     if (error) setLoginError(error.message);
   };
 
-  const loadSeasons = async () => {
+  const loadClass = async (classId, seasonList = seasons) => {
+    if (!classId) return;
+    setRosterLoaded(false);
+    setSaveState('Loading…');
+    const klass = seasonList.flatMap(s => s.classes || []).find(x => x.id === classId);
+    if (!klass) return;
+
+    const [{ data: dbPlayers, error: pe }, { data: assignments, error: ae }] = await Promise.all([
+      supabase.from('bh_players').select('*').eq('class_id', classId).order('created_at'),
+      supabase.from('bh_team_assignments').select('*').eq('class_id', classId).order('sort_order')
+    ]);
+    if (pe || ae) {
+      setSaveState('Load failed');
+      setLoginError((pe || ae).message);
+      return;
+    }
+
+    const assignmentMap = new Map((assignments || []).map(a => [a.player_id, a]));
+    const groupMap = new Map();
+    const mappedPlayers = (dbPlayers || []).map(p => {
+      const a = assignmentMap.get(p.id);
+      if (p.friend_group) {
+        if (!groupMap.has(p.friend_group)) groupMap.set(p.friend_group, []);
+        groupMap.get(p.friend_group).push(p.id);
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        rating: p.goalie ? 0 : Number(p.rating ?? 5),
+        preferredSize: p.preferred_size || 'L',
+        isGoalie: p.goalie,
+        isIR: p.ir,
+        isWoman: p.woman,
+        team: a?.team === 1 ? 'team1' : a?.team === 2 ? 'team2' : null,
+        assignedSize: a?.assigned_size || undefined,
+        assignedSockSize: a?.assigned_sock_size || undefined,
+      };
+    });
+
+    setClassStore(prev => ({ ...prev, [classId]: {
+      ...defaultClassData(),
+      teamNames: { team1: klass.team1_name, team2: klass.team2_name },
+      teamColors: { team1: klass.team1_color, team2: klass.team2_color },
+      inventory: klass.inventory?.jerseys || defaultClassData().inventory,
+      sockInventory: klass.inventory?.socks || defaultClassData().sockInventory,
+      players: mappedPlayers,
+      friendGroups: Array.from(groupMap.values()).filter(g => g.length >= 2),
+    }}));
+    setRosterLoaded(true);
+    setSaveState('Saved');
+  };
+
+  const loadSeasons = async (preferredSeasonId = null, preferredClassId = null) => {
     if (!session?.user) return;
-    const { data, error } = await supabase.from('bh_seasons').select('*').order('created_at', { ascending: false });
-    if (error) { setLoginError(error.message); return; }
-    const mapped = (data || []).map(s => ({ ...s, classes: [{ id: s.id, name: 'Class' }] }));
+    const [{ data: seasonRows, error: se }, { data: classRows, error: ce }, { data: accessRows, error: accessError }] = await Promise.all([
+      supabase.from('bh_seasons').select('*').order('created_at', { ascending: false }),
+      supabase.from('bh_classes').select('*').order('sort_order').order('created_at'),
+      supabase.from('bh_staff_access').select('user_id,active').eq('user_id', session.user.id)
+    ]);
+    if (accessError || !accessRows?.[0]?.active) {
+      setLoginError('This account is not authorized for BH Team Sorter.');
+      return;
+    }
+    if (se || ce) { setLoginError((se || ce).message); return; }
+
+    const mapped = (seasonRows || []).map(s => ({ ...s, classes: (classRows || []).filter(c => c.season_id === s.id) }));
     setSeasons(mapped);
-    const active = mapped.find(s => s.status === 'active') || mapped[0];
-    if (active) {
-      setSelectedSeasonId(active.id); setSelectedClassId(active.id);
-      setClassStore(prev => ({ ...prev, [active.id]: {
-        ...defaultClassData(),
-        teamNames: { team1: active.team1_name, team2: active.team2_name },
-        teamColors: { team1: active.team1_color, team2: active.team2_color },
-        inventory: active.inventory?.jerseys || defaultClassData().inventory,
-        sockInventory: active.inventory?.socks || defaultClassData().sockInventory,
-      }}));
-    } else { setSelectedSeasonId(null); setSelectedClassId(null); }
+    const season = mapped.find(s => s.id === preferredSeasonId) || mapped.find(s => s.status === 'active') || mapped[0] || null;
+    const klass = season?.classes?.find(x => x.id === preferredClassId) || season?.classes?.[0] || null;
+    setSelectedSeasonId(season?.id || null);
+    setSelectedClassId(klass?.id || null);
+    if (klass) await loadClass(klass.id, mapped);
+    else { setRosterLoaded(false); setSaveState(''); }
   };
 
   useEffect(() => { if (session?.user) loadSeasons(); }, [session?.user?.id]);
 
-  // ── Season / Class management ─────────────────────────────────────────────
   const addSeason = async () => {
     if (!newSeasonName.trim() || !session?.user) return;
     setSeasonBusy(true);
-    const defaults = defaultClassData();
     const { data, error } = await supabase.from('bh_seasons').insert({
-      name: newSeasonName.trim(), team1_name: defaults.teamNames.team1, team2_name: defaults.teamNames.team2,
-      team1_color: defaults.teamColors.team1, team2_color: defaults.teamColors.team2,
-      inventory: { jerseys: defaults.inventory, socks: defaults.sockInventory }, created_by: session.user.id,
+      name: newSeasonName.trim(), created_by: session.user.id
     }).select().single();
     setSeasonBusy(false);
     if (error) return alert(error.message);
     setNewSeasonName(''); setShowNewSeason(false);
-    await loadSeasons(); setSelectedSeasonId(data.id); setSelectedClassId(data.id);
+    await loadSeasons(data.id, null);
   };
 
-  const selectSeason = (id) => {
-    const season = seasons.find(s => s.id === id); if (!season) return;
-    setSelectedSeasonId(id); setSelectedClassId(id);
-    setClassStore(prev => ({ ...prev, [id]: {
-      ...(prev[id] || defaultClassData()),
-      teamNames: { team1: season.team1_name, team2: season.team2_name },
-      teamColors: { team1: season.team1_color, team2: season.team2_color },
-      inventory: season.inventory?.jerseys || defaultClassData().inventory,
-      sockInventory: season.inventory?.socks || defaultClassData().sockInventory,
-    }}));
+  const selectSeason = async (id) => {
+    const season = seasons.find(s => s.id === id);
+    setSelectedSeasonId(id);
+    const klass = season?.classes?.[0] || null;
+    setSelectedClassId(klass?.id || null);
+    if (klass) await loadClass(klass.id);
+    else { setRosterLoaded(false); setSaveState(''); }
+  };
+
+  const selectClass = async (id) => {
+    setSelectedClassId(id);
+    await loadClass(id);
+  };
+
+  const addClass = async () => {
+    if (!newClassName.trim() || !selectedSeasonId || !session?.user) return;
+    const defaults = defaultClassData();
+    const { data, error } = await supabase.from('bh_classes').insert({
+      season_id: selectedSeasonId,
+      name: newClassName.trim(),
+      team1_name: defaults.teamNames.team1,
+      team2_name: defaults.teamNames.team2,
+      team1_color: defaults.teamColors.team1,
+      team2_color: defaults.teamColors.team2,
+      inventory: { jerseys: defaults.inventory, socks: defaults.sockInventory },
+      created_by: session.user.id
+    }).select().single();
+    if (error) return alert(error.message);
+    setNewClassName(''); setShowNewClass(false);
+    await loadSeasons(selectedSeasonId, data.id);
   };
 
   const setSeasonStatus = async (status) => {
     if (!selectedSeasonId) return;
     const { error } = await supabase.from('bh_seasons').update({ status, updated_at: new Date().toISOString() }).eq('id', selectedSeasonId);
     if (error) return alert(error.message);
-    await loadSeasons();
+    await loadSeasons(selectedSeasonId, selectedClassId);
   };
 
   const deleteSeason = async () => {
     if (!selectedSeason) return;
-    if (!window.confirm(`Permanently delete "${selectedSeason.name}"? This will delete its BH players and team assignments too. This cannot be undone.`)) return;
+    if (!window.confirm(`Permanently delete "${selectedSeason.name}" and all its classes/rosters? This cannot be undone.`)) return;
     const { error } = await supabase.from('bh_seasons').delete().eq('id', selectedSeason.id);
     if (error) return alert(error.message);
     await loadSeasons();
   };
 
-  const addClass = () => {
-    if (!newClassName.trim() || !selectedSeasonId) return;
-    const classId = Math.max(...seasons.flatMap(s => s.classes.map(c => c.id)), 0) + 1;
-    setSeasons(seasons.map(s =>
-      s.id === selectedSeasonId ? { ...s, classes: [...s.classes, { id: classId, name: newClassName.trim() }] } : s
-    ));
-    setClassStore(prev => ({ ...prev, [classId]: defaultClassData() }));
-    setSelectedClassId(classId);
-    setNewClassName('');
-    setShowNewClass(false);
+  const deleteClass = async () => {
+    if (!selectedClass) return;
+    if (!window.confirm(`Permanently delete class "${selectedClass.name}" and its roster? This cannot be undone.`)) return;
+    const { error } = await supabase.from('bh_classes').delete().eq('id', selectedClass.id);
+    if (error) return alert(error.message);
+    await loadSeasons(selectedSeasonId, null);
   };
 
   useEffect(() => {
-    if (!session?.user || !selectedSeasonId) return;
+    if (!session?.user || !selectedClassId || !rosterLoaded) return;
     const timer = setTimeout(async () => {
       setSaveState('Saving…');
-      const { error } = await supabase.from('bh_seasons').update({
-        team1_name: teamNames.team1, team2_name: teamNames.team2,
-        team1_color: teamColors.team1, team2_color: teamColors.team2,
-        inventory: { jerseys: inventory, socks: sockInventory }, updated_at: new Date().toISOString(),
-      }).eq('id', selectedSeasonId);
-      setSaveState(error ? 'Save failed' : 'Saved');
-    }, 500);
+      const groupByPlayer = {};
+      friendGroups.forEach((g, i) => g.forEach(id => { groupByPlayer[id] = `G${i + 1}`; }));
+      const rosterPayload = players
+        .filter(p => p.name?.trim())
+        .map((p, i) => ({
+          ...p,
+          id: String(p.id),
+          friendGroup: groupByPlayer[p.id] || null,
+          sortOrder: i + 1
+        }));
+      const [{ error: classError }, { error: rosterError }] = await Promise.all([
+        supabase.from('bh_classes').update({
+          team1_name: teamNames.team1,
+          team2_name: teamNames.team2,
+          team1_color: teamColors.team1,
+          team2_color: teamColors.team2,
+          inventory: { jerseys: inventory, socks: sockInventory },
+          updated_at: new Date().toISOString()
+        }).eq('id', selectedClassId),
+        supabase.rpc('bh_save_class_roster', { p_class_id: selectedClassId, p_players: rosterPayload })
+      ]);
+      setSaveState(classError || rosterError ? 'Save failed' : 'Saved');
+      if (classError || rosterError) console.error(classError || rosterError);
+    }, 650);
     return () => clearTimeout(timer);
-  }, [session?.user?.id, selectedSeasonId, teamNames, teamColors, inventory, sockInventory]);
+  }, [session?.user?.id, selectedClassId, rosterLoaded, teamNames, teamColors, inventory, sockInventory, players, friendGroups]);
 
   // ── CSV Upload (supports [Config] + [Players] sections) ───────────────────
   const handleFileUpload = (event) => {
@@ -271,7 +348,7 @@ const HockeyTeamBalancer = () => {
           const isWoman = womanIdx !== -1  && ['yes','true','1','female','f','woman'].includes(cols[womanIdx]?.toLowerCase());
           const friendGroup = friendIdx !== -1 ? cols[friendIdx]?.trim() : '';
           const validSize = sizes.includes(preferredSize) ? preferredSize : 'L';
-          const playerId = idx + 1;
+          const playerId = crypto.randomUUID();
           newPlayers.push({ id: playerId, name, rating, preferredSize: validSize, isGoalie, isIR, isWoman, team: null });
           if (friendGroup) {
             if (!groupMap.has(friendGroup)) groupMap.set(friendGroup, []);
@@ -337,7 +414,7 @@ const HockeyTeamBalancer = () => {
 
   // ── Player CRUD ───────────────────────────────────────────────────────────
   const addPlayer = () => {
-    const newId = Math.max(...players.map(p => p.id), 0) + 1;
+    const newId = crypto.randomUUID();
     setPlayers(prev => [...prev, { id: newId, name: '', rating: 5, preferredSize: 'M', isGoalie: false, isIR: false, isWoman: false, team: null }]);
   };
   const updatePlayer = (id, field, value) => setPlayers(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
@@ -735,7 +812,7 @@ const HockeyTeamBalancer = () => {
               </div>
               {showNewSeason&&(<div className="flex gap-2 mt-2">
                 <input autoFocus value={newSeasonName} onChange={e=>setNewSeasonName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addSeason()} placeholder="e.g. Winter 2027" className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                <button onClick={addSeason} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm">Add</button>
+                <button onClick={addSeason} disabled={seasonBusy} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm disabled:opacity-50">{seasonBusy?'Adding…':'Add'}</button>
                 <button onClick={()=>{setShowNewSeason(false);setNewSeasonName('');}} className="px-3 py-2 bg-slate-200 rounded-lg text-sm">Cancel</button>
               </div>)}
             </div>
@@ -743,13 +820,13 @@ const HockeyTeamBalancer = () => {
               <label className="block text-sm font-medium text-slate-600 mb-1">Class</label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <select value={selectedClassId||''} onChange={e=>setSelectedClassId(Number(e.target.value))} disabled={!selectedSeason||selectedSeason.classes.length===0} className="w-full appearance-none px-3 py-2 border rounded-lg pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400">
+                  <select value={selectedClassId||''} onChange={e=>selectClass(e.target.value)} disabled={!selectedSeason||selectedSeason.classes.length===0} className="w-full appearance-none px-3 py-2 border rounded-lg pr-8 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400">
                     {selectedSeason?.classes.length===0&&<option value="">No classes yet</option>}
                     {selectedSeason?.classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <ChevronDown size={16} className="absolute right-2 top-3 text-slate-400 pointer-events-none"/>
                 </div>
-                <button onClick={()=>setShowNewClass(!showNewClass)} disabled={!selectedSeasonId} className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300"><Plus size={18}/></button>
+                <button onClick={()=>setShowNewClass(!showNewClass)} disabled={!selectedSeasonId} className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300"><Plus size={18}/></button>{selectedClass&&<button onClick={deleteClass} className="px-3 py-2 border border-red-200 text-red-700 rounded-lg" title="Delete class"><Trash2 size={18}/></button>}
               </div>
               {showNewClass&&(<div className="flex gap-2 mt-2">
                 <input autoFocus value={newClassName} onChange={e=>setNewClassName(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addClass()} placeholder="e.g. Sunday" className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
