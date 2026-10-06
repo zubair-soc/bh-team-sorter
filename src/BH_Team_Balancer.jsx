@@ -448,79 +448,32 @@ const HockeyTeamBalancer = () => {
     team2: Object.fromEntries(sizes.map(s => [s, inventory.team2[s] - (jerseyUsage.team2[s] || 0)])),
   }), [inventory, jerseyUsage, sizes]);
 
-  // ── Re-run jersey allocation for a single team using CURRENT assignedSize
-  // as a "soft preference" first (so players keep their jersey if it's still
-  // available), then fill gaps using normal preferred-size logic. This fixes
-  // players getting stuck on TBD after inventory frees up from other moves.
-  const reallocateTeamJerseys = (teamPlayers, inv) => {
-    const invCopy = { ...inv };
-    const result = teamPlayers.map(p => ({ ...p }));
-
-    // Pass 1: keep players in their current assigned size if it's not TBD
-    // and still available (locks in existing happy assignments first)
-    const locked = new Set();
-    result.forEach(p => {
-      if (p.assignedSize && p.assignedSize !== 'TBD' && invCopy[p.assignedSize] > 0) {
-        invCopy[p.assignedSize]--;
-        locked.add(p.id);
-      }
-    });
-
-    // Pass 2: reassign everyone NOT locked using the normal allocation order
-    const unlocked = result.filter(p => !locked.has(p.id));
-    const assignGoalie = (p) => { p.assignedSize = invCopy['G2XL'] > 0 ? (invCopy['G2XL']--, 'G2XL') : 'TBD'; };
-    const assignSkater = (p) => {
-      const si = skaterSizes.indexOf(p.preferredSize);
-      let done = false;
-      for (let i = si; i < skaterSizes.length; i++) {
-        if (invCopy[skaterSizes[i]] > 0) { p.assignedSize = skaterSizes[i]; invCopy[skaterSizes[i]]--; done = true; break; }
-      }
-      if (!done) p.assignedSize = 'TBD';
-    };
-    unlocked.filter(p => p.isGoalie && !p.isIR).forEach(assignGoalie);
-    unlocked.filter(p => !p.isGoalie && !p.isIR).sort((a, b) => skaterSizes.indexOf(a.preferredSize) - skaterSizes.indexOf(b.preferredSize)).forEach(assignSkater);
-    unlocked.filter(p => p.isGoalie && p.isIR).forEach(assignGoalie);
-    unlocked.filter(p => !p.isGoalie && p.isIR).sort((a, b) => skaterSizes.indexOf(a.preferredSize) - skaterSizes.indexOf(b.preferredSize)).forEach(assignSkater);
-
-    return result;
+  const reallocateTeamGear = (teamPlayers, team) => {
+    const jerseys = allocateJerseys(teamPlayers, inventory[team]);
+    return allocateSocks(jerseys, sockInventory[team]);
   };
 
-  // ── Swap logic (full team-level jersey re-allocation, nobody stuck on TBD) ─
+  // ── Swap logic: manual changes stay manual; only gear is recalculated ──
   const handlePlayerClick = (clickedId) => {
     if (!selectedForSwap) { setSelectedForSwap(clickedId); return; }
     if (selectedForSwap === clickedId) { setSelectedForSwap(null); return; }
     const a = players.find(p => p.id === selectedForSwap);
     const b = players.find(p => p.id === clickedId);
     if (!a || !b) { setSelectedForSwap(null); return; }
-
-    const aNewTeam = b.team, bNewTeam = a.team;
-
-    // Build the post-swap player list, then reallocate jerseys per team from scratch
-    const swapped = players.map(p => {
-      if (p.id === a.id) return { ...p, team: aNewTeam };
-      if (p.id === b.id) return { ...p, team: bNewTeam };
-      return p;
-    });
-
-    const t1Players = reallocateTeamJerseys(swapped.filter(p => p.team === 'team1'), inventory.team1);
-    const t2Players = reallocateTeamJerseys(swapped.filter(p => p.team === 'team2'), inventory.team2);
-
-    setPlayers(prev => prev.map(p => {
-      const tp = t1Players.find(x => x.id === p.id) || t2Players.find(x => x.id === p.id);
-      return tp ? { ...p, team: tp.team, assignedSize: tp.assignedSize } : p;
-    }));
+    const swapped = players.map(p => p.id === a.id ? { ...p, team: b.team } : p.id === b.id ? { ...p, team: a.team } : p);
+    const t1Players = reallocateTeamGear(swapped.filter(p => p.team === 'team1'), 'team1');
+    const t2Players = reallocateTeamGear(swapped.filter(p => p.team === 'team2'), 'team2');
+    const byId = new Map([...t1Players,...t2Players].map(p=>[p.id,p]));
+    setPlayers(prev => prev.map(p => byId.has(p.id) ? { ...p, ...byId.get(p.id) } : p));
     setSelectedForSwap(null);
   };
 
-  // ── One-way move (no swap-back required) ───────────────────────────────────
   const movePlayerToTeam = (playerId, newTeam) => {
     const moved = players.map(p => p.id === playerId ? { ...p, team: newTeam } : p);
-    const t1Players = reallocateTeamJerseys(moved.filter(p => p.team === 'team1'), inventory.team1);
-    const t2Players = reallocateTeamJerseys(moved.filter(p => p.team === 'team2'), inventory.team2);
-    setPlayers(prev => prev.map(p => {
-      const tp = t1Players.find(x => x.id === p.id) || t2Players.find(x => x.id === p.id);
-      return tp ? { ...p, team: tp.team, assignedSize: tp.assignedSize } : p;
-    }));
+    const t1Players = reallocateTeamGear(moved.filter(p => p.team === 'team1'), 'team1');
+    const t2Players = reallocateTeamGear(moved.filter(p => p.team === 'team2'), 'team2');
+    const byId = new Map([...t1Players,...t2Players].map(p=>[p.id,p]));
+    setPlayers(prev => prev.map(p => byId.has(p.id) ? { ...p, ...byId.get(p.id) } : p));
     setSelectedForSwap(null);
   };
 
