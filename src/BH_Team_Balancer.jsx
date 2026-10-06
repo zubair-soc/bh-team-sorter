@@ -795,11 +795,15 @@ const HockeyTeamBalancer = () => {
             <h2 className="soc-card-title flex items-center gap-2"><Users className="text-green-600"/> Players ({players.length})</h2>
             <button onClick={addPlayer} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">+ Add Player</button>
           </div>
-          <div className="space-y-2 max-h-96 overflow-auto soc-mobile-scroll">
+          <div className="soc-mobile-scroll">
+            <div className="grid grid-cols-[minmax(130px,1fr)_64px_82px_34px_34px_30px] gap-2 px-2 pb-2 min-w-[650px] soc-label">
+              <span>Player</span><span>Rating</span><span>Size</span><span className="text-center">G</span><span className="text-center">W</span><span></span>
+            </div>
+            <div className="space-y-1">
             {players.map(player=>{
               const gi=friendGroups.findIndex(g=>g.includes(player.id));
               return(
-                <div key={player.id} className={`grid grid-cols-[minmax(130px,1fr)_64px_82px_auto_auto_auto] gap-2 items-center p-2 rounded-xl min-w-[650px] ${gi>=0?groupColors[gi%groupColors.length]:'bg-white'} ${gi>=0?'border-2':'border border-slate-200'}`}>
+                <div key={player.id} className={`grid grid-cols-[minmax(130px,1fr)_64px_82px_auto_auto_auto] gap-2 items-center px-2 py-1.5 rounded-lg min-w-[650px] ${gi>=0?groupColors[gi%groupColors.length]:'bg-white'} ${gi>=0?'border-2':'border border-slate-200'}`}>
                   <input type="text" placeholder="Name" value={player.name} onChange={e=>updatePlayer(player.id,'name',e.target.value)} className="flex-1 px-2 py-1 border rounded"/>
                   <input type="number" min="0" max="10" step="0.5" value={player.isGoalie?'':player.rating} onChange={e=>updatePlayer(player.id,'rating',parseFloat(e.target.value)||0)} disabled={player.isGoalie} placeholder={player.isGoalie?'—':''} className="w-16 px-2 py-1 border rounded disabled:bg-slate-100 disabled:text-slate-400" title={player.isGoalie?'Goalies have no rating':'Rating (0-10)'}/>
                   <select value={player.preferredSize} onChange={e=>updatePlayer(player.id,'preferredSize',e.target.value)} className="px-2 py-1 border rounded">
@@ -811,6 +815,7 @@ const HockeyTeamBalancer = () => {
                 </div>
               );
             })}
+            </div>
           </div>
         </div>
 
