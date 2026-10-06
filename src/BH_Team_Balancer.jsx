@@ -538,123 +538,20 @@ const HockeyTeamBalancer = () => {
   // ── Excel export ──────────────────────────────────────────────────────────
   const downloadForExcel = () => {
     if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet. Please try again.'); return; }
-    const t1 = players.filter(p => p.team === 'team1');
-    const t2 = players.filter(p => p.team === 'team2');
-    const allPlayers = [...t1, ...t2];
-    if (allPlayers.length === 0) { alert('Balance teams first.'); return; }
-
-    const TEAL='1A7A6E', ORANGE='D4520A', DARK='1E293B', LIGHT='F1F5F9', WHITE='FFFFFF', RED='DC2626', BORDER='CBD5E1';
-    const mkFont = (color=WHITE, sz=11, bold=true) => ({ name:'Arial', bold, color, sz });
-    const mkFill = (color) => ({ patternType:'solid', fgColor:{ rgb: color } });
-    const mkBorder = () => { const s={style:'thin',color:{rgb:BORDER}}; return {top:s,bottom:s,left:s,right:s}; };
-    const ctr = { horizontal:'center', vertical:'center', wrapText:true };
-    const lft = { horizontal:'left', vertical:'center' };
-    const stl = (ws, addr, s) => { if(!ws[addr]) ws[addr]={t:'s',v:''}; ws[addr].s=s; };
-
-    const wb = XLSX.utils.book_new();
-    const t1name = teamNames.team1, t2name = teamNames.team2;
-    const firstDataRow = 4, lastDataRow = 3 + allPlayers.length;
-
-    const rosterAOA = [
-      [`BH Hockey — ${seasonClassLabel}`],
-      ["Change a player's TEAM column to swap them. All summary stats update automatically."],
-      ["#","Player Name","Team","Position","Rating","Pref. Size","Assigned Size","Socks","Woman","Notes"],
-      ...allPlayers.map((p,i) => [
-        i+1, p.name||`Player ${p.id}`,
-        p.team==='team1'?t1name:t2name,
-        p.isGoalie?'Goalie':'Skater',
-        p.isGoalie?'—':p.rating,
-        p.preferredSize, p.assignedSize||'TBD',
-        p.assignedSockSize||'TBD', p.isWoman?'Yes':'No', ''
-      ])
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(rosterAOA);
-    ws['!cols'] = [{wch:4},{wch:22},{wch:18},{wch:10},{wch:8},{wch:12},{wch:14},{wch:6},{wch:8},{wch:20}];
-    ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:9}},{s:{r:1,c:0},e:{r:1,c:9}}];
-    stl(ws,'A1',{font:mkFont(WHITE,14,true),fill:mkFill(DARK),alignment:ctr});
-    stl(ws,'A2',{font:{name:'Arial',color:'64748B',sz:9,italic:true},fill:mkFill(LIGHT),alignment:ctr});
-    ['A','B','C','D','E','F','G','H','I','J'].forEach(col => stl(ws,`${col}3`,{font:mkFont(WHITE,11,true),fill:mkFill(DARK),alignment:ctr,border:mkBorder()}));
-    allPlayers.forEach((p,i) => {
-      const row=i+4, rf=i%2===0?LIGHT:WHITE, tc=p.team==='team1'?TEAL:ORANGE;
-      ['A','B','C','D','E','F','G','H','I','J'].forEach((col,ci) => {
-        const addr=`${col}${row}`; if(!ws[addr]) ws[addr]={t:'s',v:''};
-        let s={font:mkFont(DARK,10,false),alignment:ci===1?lft:ctr,border:mkBorder()};
-        if(ci===2){s.font=mkFont(WHITE,10,true);s.fill=mkFill(tc);}
-        else if(ci===8&&p.isWoman){s.font=mkFont('7C3AED',10,true);s.fill=mkFill(rf);}
-        else{s.fill=mkFill(rf);}
-        ws[addr].s=s;
-      });
-    });
-    XLSX.utils.book_append_sheet(wb, ws, 'Roster');
-
-    const cif = (team, xc, xv) => {
-      const b=`COUNTIFS(Roster!C${firstDataRow}:C${lastDataRow},"${team}"`;
-      return xc?b+`,Roster!${xc}${firstDataRow}:${xc}${lastDataRow},"${xv}")`:b+`)`;
-    };
-    const sif = (team) => `SUMIFS(Roster!E${firstDataRow}:E${lastDataRow},Roster!C${firstDataRow}:C${lastDataRow},"${team}",Roster!D${firstDataRow}:D${lastDataRow},"Skater")`;
-
-    const summaryAOA = [
-      [`Team Summary — ${seasonClassLabel}`],
-      ['', t1name, t2name],
-      ['Total Players',  {f:cif(t1name)},              {f:cif(t2name)}],
-      ['Skater Rating',  {f:sif(t1name)},              {f:sif(t2name)}],
-      ['Avg Skater Rtg', {f:'=IFERROR(B4/COUNTIFS(Roster!C'+firstDataRow+':C'+lastDataRow+',"'+t1name+'",Roster!D'+firstDataRow+':D'+lastDataRow+',"Skater"),0)'}, {f:'=IFERROR(C4/COUNTIFS(Roster!C'+firstDataRow+':C'+lastDataRow+',"'+t2name+'",Roster!D'+firstDataRow+':D'+lastDataRow+',"Skater"),0)'}],
-      ['Goalies',        {f:cif(t1name,'D','Goalie')}, {f:cif(t2name,'D','Goalie')}],
-      ['Women',          {f:cif(t1name,'I','Yes')},    {f:cif(t2name,'I','Yes')}],
-      [],
-      [{f:`=IF(ABS(B4-C4)>B3*0.5,"⚠️ Teams may be unbalanced — skater rating diff: "&TEXT(ABS(B4-C4),"0.0"),"✅ Teams are balanced")`}],
-      [],
-      ['Jersey Size Breakdown','',''],
-      ['', t1name, t2name],
-      ...['M','L','XL','2XL','G2XL'].map(sz => [
-        sz,
-        {f:`COUNTIFS(Roster!C${firstDataRow}:C${lastDataRow},"${t1name}",Roster!G${firstDataRow}:G${lastDataRow},"${sz}")`},
-        {f:`COUNTIFS(Roster!C${firstDataRow}:C${lastDataRow},"${t2name}",Roster!G${firstDataRow}:G${lastDataRow},"${sz}")`},
-      ])
-    ];
-    const ts = XLSX.utils.aoa_to_sheet(summaryAOA);
-    ts['!cols']=[{wch:22},{wch:18},{wch:18}];
-    ts['!merges']=[{s:{r:0,c:0},e:{r:0,c:2}},{s:{r:9,c:0},e:{r:9,c:2}},{s:{r:11,c:0},e:{r:11,c:2}}];
-    stl(ts,'A1',{font:mkFont(WHITE,13,true),fill:mkFill(DARK),alignment:ctr});
-    ['A','B','C'].forEach((col,i) => stl(ts,`${col}2`,{font:mkFont(WHITE,11,true),fill:mkFill(i===0?DARK:i===1?TEAL:ORANGE),alignment:ctr,border:mkBorder()}));
-    for(let r=3;r<=7;r++){
-      stl(ts,`A${r}`,{font:mkFont(DARK,10,true),fill:mkFill(LIGHT),alignment:lft,border:mkBorder()});
-      ['B','C'].forEach(col => stl(ts,`${col}${r}`,{font:mkFont(DARK,10,false),fill:mkFill(WHITE),alignment:ctr,border:mkBorder()}));
-    }
-    stl(ts,'A10',{font:mkFont(DARK,10,true),alignment:ctr,border:mkBorder()});
-    stl(ts,'A12',{font:mkFont(WHITE,11,true),fill:mkFill(DARK),alignment:ctr});
-    ['B','C'].forEach((col,i) => stl(ts,`${col}13`,{font:mkFont(WHITE,11,true),fill:mkFill(i===0?TEAL:ORANGE),alignment:ctr,border:mkBorder()}));
-    for(let r=14;r<=18;r++){
-      stl(ts,`A${r}`,{font:mkFont(DARK,10,true),fill:mkFill(LIGHT),alignment:lft,border:mkBorder()});
-      ['B','C'].forEach(col => stl(ts,`${col}${r}`,{font:mkFont(DARK,10,false),fill:mkFill(WHITE),alignment:ctr,border:mkBorder()}));
-    }
-    XLSX.utils.book_append_sheet(wb, ts, 'Team Summary');
-
-    const safe = s => (s||'').replace(/\s+/g,'_');
-    XLSX.writeFile(wb, `BH_Roster_${safe(selectedSeason?.name)}_${safe(selectedClass?.name)}.xlsx`, { bookType:'xlsx', type:'binary', cellStyles:true });
-  };
-
-  // ── Text exports ──────────────────────────────────────────────────────────
-  const downloadAdminRoster = () => {
-    const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2');
-    let c=`HOCKEY ROSTER - ADMIN\nSeason/Class: ${seasonClassLabel}\nGenerated: ${new Date().toLocaleDateString()}\n\n================\nTEAM 1: ${teamNames.team1.toUpperCase()}\n================\n`;
-    t1.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'}${jerseyNumberForPlayer(p)?` | #${jerseyNumberForPlayer(p)}`:''}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
-    c+=`\nTotal: ${t1.length} | Skater Rating: ${stats.team1.skaterRating} | Avg: ${stats.team1.skaterCount>0?(stats.team1.skaterRating/stats.team1.skaterCount).toFixed(2):0}\n\n================\nTEAM 2: ${teamNames.team2.toUpperCase()}\n================\n`;
-    t2.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'}${jerseyNumberForPlayer(p)?` | #${jerseyNumberForPlayer(p)}`:''}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
-    c+=`\nTotal: ${t2.length} | Skater Rating: ${stats.team2.skaterRating} | Avg: ${stats.team2.skaterCount>0?(stats.team2.skaterRating/stats.team2.skaterCount).toFixed(2):0}\n`;
-    const a=document.createElement('a'); a.href=`data:text/plain;base64,${btoa(unescape(encodeURIComponent(c)))}`;
-    a.download='hockey_admin_roster.txt'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  };
-
-  const downloadPublicRoster = () => {
-    const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2');
-    let c=`HOCKEY ROSTER\nSeason/Class: ${seasonClassLabel}\nGenerated: ${new Date().toLocaleDateString()}\n\n================\nTEAM 1: ${teamNames.team1.toUpperCase()}\n================\n`;
-    t1.forEach(p=>{c+=`${p.name||'Unknown'} — ${p.isGoalie?'Goalie':'Skater'}\n`;});
-    c+=`\nTotal: ${t1.length} | Goalies: ${stats.team1.goalies}\n\n================\nTEAM 2: ${teamNames.team2.toUpperCase()}\n================\n`;
-    t2.forEach(p=>{c+=`${p.name||'Unknown'} — ${p.isGoalie?'Goalie':'Skater'}\n`;});
-    c+=`\nTotal: ${t2.length} | Goalies: ${stats.team2.goalies}\n`;
-    const a=document.createElement('a'); a.href=`data:text/plain;base64,${btoa(unescape(encodeURIComponent(c)))}`;
-    a.download='hockey_public_roster.txt'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2'), all=[...t1,...t2];
+    if(!all.length){alert('Balance teams first.');return;}
+    const wb=XLSX.utils.book_new(), tn=p=>p.team==='team1'?teamNames.team1:teamNames.team2;
+    const jn=p=>jerseyNumberForPlayer(p)||'', fg=p=>{const i=friendGroups.findIndex(g=>g.includes(p.id));return i>=0?`Friend Group ${i+1}`:'';};
+    const add=(name,rows,widths)=>{const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=widths.map(w=>({wch:w}));XLSX.utils.book_append_sheet(wb,ws,name);};
+    add('Public Teams',[['BH Hockey — '+seasonClassLabel],['Team','Jersey #','Player'],...all.map(p=>[tn(p),jn(p),p.name])],[22,12,28]);
+    add('Admin Roster',[['BH Hockey — '+seasonClassLabel],['Player','Team','Jersey #','Assigned Size','Preferred Size','Position','Rating','Woman','Friend Group'],...all.map(p=>[p.name,tn(p),jn(p),p.assignedSize||'TBD',p.preferredSize,p.isGoalie?'Goalie':'Skater',p.isGoalie?'—':p.rating,p.isWoman?'Yes':'No',fg(p)])],[28,22,12,15,15,12,10,10,18]);
+    const calc=arr=>{const sk=arr.filter(p=>!p.isGoalie),total=sk.reduce((x,p)=>x+p.rating,0),top=[...sk].sort((a,b)=>b.rating-a.rating).slice(0,Math.max(1,Math.ceil(sk.length*.25)));return{count:arr.length,total,avg:sk.length?(total/sk.length).toFixed(2):'—',g:arr.filter(p=>p.isGoalie).length,w:arr.filter(p=>p.isWoman).length,top:top.map(p=>`${p.name} (${p.rating})`).join(', ')};};
+    const a=calc(t1),b=calc(t2),exceptions=all.flatMap(p=>{const x=[];if(!p.assignedSize||p.assignedSize==='TBD')x.push([tn(p),p.name,'No jersey available']);else if(p.assignedSize!==p.preferredSize)x.push([tn(p),p.name,`Sized up: ${p.preferredSize} → ${p.assignedSize}`]);if(p.assignedSize&&p.assignedSize!=='TBD'&&!jn(p))x.push([tn(p),p.name,`No jersey number assigned (${p.assignedSize})`]);return x;});
+    add('Team Summary',[['Team Summary — '+seasonClassLabel],['Metric',teamNames.team1,teamNames.team2],['Players',a.count,b.count],['Total skater rating',a.total,b.total],['Average skater rating',a.avg,b.avg],['Goalies',a.g,b.g],['Women',a.w,b.w],['Top 25% skaters',a.top,b.top],[],['Jersey fit','',''],['Preferred size',t1.filter(p=>p.assignedSize===p.preferredSize).length,t2.filter(p=>p.assignedSize===p.preferredSize).length],['Sized up',t1.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length,t2.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length],['No jersey',t1.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length,t2.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length],[],['Exceptions','Player','Issue'],...(exceptions.length?exceptions:[['None','','']])],[24,42,42]);
+    const pull=[...all].sort((x,y)=>tn(x).localeCompare(tn(y))||(Number(jn(x))||9999)-(Number(jn(y))||9999)||String(jn(x)).localeCompare(String(jn(y)),undefined,{numeric:true}));
+    add('Jersey Pull List',[['Jersey Pull List — '+seasonClassLabel],['Team','Jersey #','Size','Player'],...pull.map(p=>[tn(p),jn(p),p.assignedSize||'TBD',p.name])],[22,12,12,28]);
+    const safe=s=>(s||'').replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'');
+    XLSX.writeFile(wb,`BH_Roster_${safe(selectedSeason?.name)}_${safe(selectedClass?.name)}.xlsx`,{bookType:'xlsx',type:'binary'});
   };
 
   const groupColors = ['bg-blue-100 border-blue-300','bg-green-100 border-green-300','bg-purple-100 border-purple-300','bg-pink-100 border-pink-300','bg-yellow-100 border-yellow-300','bg-indigo-100 border-indigo-300','bg-red-100 border-red-300','bg-orange-100 border-orange-300'];
@@ -940,13 +837,9 @@ const HockeyTeamBalancer = () => {
 
         {/* ── Export ── */}
         <div className="soc-card p-5 md:p-6 mb-5">
-          <h2 className="soc-card-title mb-4">Export Results</h2>
-          <div className="grid md:grid-cols-3 gap-3 soc-mobile-stack">
-            <button onClick={downloadForExcel} className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium flex items-center justify-center gap-2"><FileSpreadsheet size={20}/> Excel</button>
-            <button onClick={downloadAdminRoster} className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center justify-center gap-2"><FileText size={20}/> Admin PDF</button>
-            <button onClick={downloadPublicRoster} className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center justify-center gap-2"><Users size={20}/> Public PDF</button>
-          </div>
-          <p className="text-sm text-slate-600 mt-3">Excel downloads a live file — change the Team column to swap players and stats auto-update.</p>
+          <h2 className="soc-card-title mb-2">Export Results</h2>
+          <p className="text-sm text-slate-500 mb-4">One workbook with Public Teams, Admin Roster, Team Summary and Jersey Pull List tabs.</p>
+          <button onClick={downloadForExcel} className="w-full md:w-auto px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-bold flex items-center justify-center gap-2"><FileSpreadsheet size={20}/> Export Excel</button>
         </div>
 
         {/* ── Swap UI ── */}
