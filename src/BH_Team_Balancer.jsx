@@ -633,7 +633,7 @@ const HockeyTeamBalancer = () => {
   if (!session) return (
     <div className="min-h-screen grid place-items-center p-4 bg-[#0b0d12]">
       <form onSubmit={signIn} className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-7 space-y-5 border border-white/10">
-        <div className="flex items-center gap-4 pb-2"><div className="soc-logo-mark">SOC</div><div><p className="text-xs font-extrabold tracking-[.18em] text-[#c8102e] uppercase">Shinny of Champions</p><h1 className="text-2xl font-black text-slate-900 tracking-tight">BH Team Sorter</h1><p className="text-sm text-slate-500 mt-1">Staff operations</p></div></div>
+        <div className="flex items-center gap-4 pb-2"><img src="https://staging.shinnyofchampions.com/wp-content/uploads/2026/04/Shinny-of-Champions-png.png" alt="Shinny of Champions" className="h-14 md:h-16 w-auto object-contain" /><div><p className="text-xs font-extrabold tracking-[.18em] text-[#c8102e] uppercase">Shinny of Champions</p><h1 className="text-2xl font-black text-slate-900 tracking-tight">BH Team Sorter</h1><p className="text-sm text-slate-500 mt-1">Staff operations</p></div></div>
         <input type="email" required value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} placeholder="Email" className="w-full soc-input px-4 py-3"/>
         <input type="password" required value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} placeholder="Password" className="w-full border rounded-lg px-3 py-2"/>
         {loginError && <p className="text-sm text-red-600">{loginError}</p>}
@@ -656,7 +656,7 @@ const HockeyTeamBalancer = () => {
     <div className="soc-shell">
       <header className="soc-topbar">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-5 flex items-center gap-4">
-          <div className="soc-logo-mark">SOC</div>
+          <img src="https://staging.shinnyofchampions.com/wp-content/uploads/2026/04/Shinny-of-Champions-png.png" alt="Shinny of Champions" className="h-14 md:h-16 w-auto object-contain" />
           <div className="min-w-0">
             <p className="text-[11px] md:text-xs font-extrabold tracking-[.18em] text-[#d4af37] uppercase">Shinny of Champions</p>
             <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">Beginner Hockey Team Sorter</h1>
