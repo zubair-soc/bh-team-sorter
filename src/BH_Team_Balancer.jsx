@@ -963,14 +963,17 @@ const HockeyTeamBalancer = () => {
                         const sizedUp=assigned!=='TBD'&&assigned!==player.preferredSize;
                         const noSize=assigned==='TBD';
                         const isSelected=selectedForSwap===player.id;
+                        const selectedGroupIndex=selectedForSwap ? friendGroups.findIndex(g=>g.includes(selectedForSwap)) : -1;
+                        const isSelectedFriend=selectedGroupIndex>=0 && friendGroups[selectedGroupIndex].includes(player.id);
                         const otherTeam = team==='team1' ? 'team2' : 'team1';
                         const jerseyOptions = player.isGoalie ? ['G2XL'] : skaterSizes;
                         return(
                           <div key={player.id} onClick={()=>handlePlayerClick(player.id)}
                             className={`p-3 rounded-lg cursor-pointer transition-all select-none
                               ${isSelected?'ring-2 ring-blue-500 bg-blue-50 shadow-md scale-[1.02]'
-                                :selectedForSwap?'hover:ring-2 hover:ring-blue-300 hover:bg-blue-50'
-                                :gi>=0?groupColors[gi%groupColors.length]:'bg-slate-50 hover:bg-slate-100'}
+                                :isSelectedFriend?'ring-2 ring-amber-400 bg-amber-50 shadow-sm'
+                                :gi>=0?groupColors[gi%groupColors.length]
+                                :selectedForSwap?'hover:ring-2 hover:ring-blue-300 hover:bg-blue-50':'bg-slate-50 hover:bg-slate-100'}
                               ${gi>=0&&!isSelected?'border-2':'border border-slate-200'}`}>
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex-1 min-w-0">
@@ -978,6 +981,7 @@ const HockeyTeamBalancer = () => {
                                 <p className="text-xs text-slate-500 mt-0.5">
                                   {player.isGoalie?'Goalie':`⭐ ${player.rating}`}
                                   {player.isWoman&&' · W'}
+                                  {gi>=0&&<span className="ml-2 font-bold text-slate-600">· Friend Group {gi+1}</span>}
                                 </p>
                               </div>
                               <div className="flex items-center gap-1.5">
