@@ -416,7 +416,21 @@ const HockeyTeamBalancer = () => {
   const updateInventory     = (team, size, value) => setInventory(prev => ({ ...prev, [team]: { ...prev[team], [size]: Math.max(0, parseInt(value) || 0) } }));
   const updateSockInventory = (team, size, value) => setSockInventory(prev => ({ ...prev, [team]: { ...prev[team], [size]: Math.max(0, parseInt(value) || 0) } }));
   const updateJerseyNumbers = (team, size, value) => setJerseyNumbers(prev => ({ ...prev, [team]: { ...prev[team], [size]: value } }));
-  const parseJerseyNumbers = (value) => String(value || '').split(/[,\s]+/).map(v=>v.trim()).filter(Boolean);
+  const parseJerseyNumbers = (value) => {
+    const result = [];
+    String(value || '').split(',').map(v=>v.trim()).filter(Boolean).forEach(part => {
+      const range = part.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (range) {
+        const start = Number(range[1]), end = Number(range[2]);
+        if (start <= end && end - start <= 200) {
+          for (let n = start; n <= end; n++) result.push(String(n));
+          return;
+        }
+      }
+      part.split(/\s+/).filter(Boolean).forEach(n => result.push(n));
+    });
+    return [...new Set(result)];
+  };
   const jerseyNumberForPlayer = (player) => {
     if (!player.team || !player.assignedSize || player.assignedSize === 'TBD') return '';
     const list = parseJerseyNumbers(jerseyNumbers?.[player.team]?.[player.assignedSize]);
@@ -770,7 +784,7 @@ const HockeyTeamBalancer = () => {
                   {jerseyNumbersOpen[team]?'Hide jersey numbers':'Add jersey numbers'} <ChevronDown size={14} className={`transition-transform ${jerseyNumbersOpen[team]?'rotate-180':''}`}/>
                 </button>
                 {jerseyNumbersOpen[team]&&<div className="mb-4 p-3 rounded-xl bg-white border border-slate-200 space-y-2">
-                  <p className="text-xs text-slate-500 mb-2">Optional · comma-separated · any numbers</p>
+                  <p className="text-xs text-slate-500 mb-2">Optional · use numbers or ranges, e.g. 1-3, 7</p>
                   {sizes.map(size=>(
                     <div key={size} className="flex items-center gap-2">
                       <label className="w-16 text-xs font-bold text-slate-600">{size}</label>
