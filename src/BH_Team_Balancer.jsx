@@ -379,24 +379,6 @@ const HockeyTeamBalancer = () => {
 
   const downloadTemplate = () => {
     const template = [
-      '[Config]',
-      'Team1Name,Teal Tanglers',
-      'Team2Name,Orange Crush',
-      'Team1_M,2',
-      'Team1_L,6',
-      'Team1_XL,5',
-      'Team1_2XL,4',
-      'Team1_G2XL,2',
-      'Team2_M,2',
-      'Team2_L,6',
-      'Team2_XL,5',
-      'Team2_2XL,4',
-      'Team2_G2XL,2',
-      'Team1_Sock_L30,10',
-      'Team1_Sock_XL32,10',
-      'Team2_Sock_L30,10',
-      'Team2_Sock_XL32,10',
-      '[Players]',
       'Name,Rating,Preferred Size,Goalie,IR,Woman,Friend Group',
       'John Smith,7,L,No,No,No,A',
       'Jane Doe,6,M,No,No,Yes,A',
@@ -457,13 +439,13 @@ const HockeyTeamBalancer = () => {
     const skaterRatingOf = (team) => Object.entries(assignments)
       .filter(([, t]) => t === team)
       .reduce((s, [id]) => {
-        const p = players.find(p => p.id === parseInt(id));
+        const p = players.find(p => p.id === id);
         return s + (p.isGoalie ? 0 : p.rating);
       }, 0);
     const countOf = (team) => Object.values(assignments).filter(t => t === team).length;
     const womenOf = (team) => Object.entries(assignments)
       .filter(([, t]) => t === team)
-      .reduce((s, [id]) => s + (players.find(p => p.id === parseInt(id)).isWoman ? 1 : 0), 0);
+      .reduce((s, [id]) => s + (players.find(p => p.id === id).isWoman ? 1 : 0), 0);
 
     // Decide which team a player/group should go to: prioritize keeping
     // roster SIZE close, then break ties by skater rating.
@@ -497,9 +479,15 @@ const HockeyTeamBalancer = () => {
 
     const remaining = unassigned.filter(p => unassignedIds.has(p.id));
 
-    // Goalies: strictly alternate, one per team, not rating-based
+    // Goalies: keep goalie counts as even as possible, including any pre-assigned goalies.
+    const goalieCountOf = team => Object.entries(assignments)
+      .filter(([, t]) => t === team)
+      .reduce((n, [id]) => n + (players.find(p => p.id === id)?.isGoalie ? 1 : 0), 0);
     const goalies = remaining.filter(p => p.isGoalie);
-    goalies.forEach((g, i) => { assignments[g.id] = i % 2 === 0 ? 'team1' : 'team2'; });
+    goalies.forEach(g => {
+      const g1 = goalieCountOf('team1'), g2 = goalieCountOf('team2');
+      assignments[g.id] = g1 <= g2 ? 'team1' : 'team2';
+    });
 
     // Women skaters — alternate by rating, but respect count balance
     const women = remaining.filter(p => !p.isGoalie && p.isWoman).sort((a, b) => b.rating - a.rating);
@@ -903,13 +891,13 @@ const HockeyTeamBalancer = () => {
               </label>
               <div className="flex flex-col gap-2 md:w-48">
                 <button onClick={downloadTemplate} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium flex items-center justify-center gap-2"><Download size={18}/> Template</button>
-                <p className="text-xs text-slate-500 text-center">Includes config + players</p>
+                <p className="text-xs text-slate-500 text-center">Player import template</p>
               </div>
             </div>
             {uploadError&&(<div className="p-3 bg-red-50 border border-red-200 rounded flex items-start gap-2"><AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20}/><p className="text-sm text-red-800">{uploadError}</p></div>)}
             <div className="text-xs text-slate-500 space-y-1">
-              <p><strong>[Config] section:</strong> Team names, jersey counts, sock counts</p>
-              <p><strong>[Players] section:</strong> Name, Rating (blank for goalies), Preferred Size, Goalie, IR, Woman, Friend Group</p>
+              <p><strong>Columns:</strong> Name, Rating (blank for goalies), Preferred Size, Goalie, IR, Woman, Friend Group</p>
+              <p>Team names, colours and inventory are saved with the class and do not need to be re-uploaded.</p>
             </div>
           </div>
         </div>
