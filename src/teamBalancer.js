@@ -11,7 +11,7 @@ const jerseyPenaltyForTeam = (teamPlayers, inventory) => {
   for (const p of skaters) {
     const start = Math.max(0, SKATER_SIZES.indexOf(p.preferredSize));
     let found = false;
-    for (let i=start;i<SKATER_SIZES.length;i++) {
+    for (let i=start;i<=Math.min(start+1,SKATER_SIZES.length-1);i++) {
       const s=SKATER_SIZES[i];
       if ((inv[s] || 0)>0) { inv[s]--; penalty += (i-start); found=true; break; }
     }
@@ -90,7 +90,7 @@ export function allocateJerseys(teamPlayers, inventory) {
   result.filter(p=>p.isGoalie).forEach(p=>{p.assignedSize=(inv.G2XL||0)>0?'G2XL':'TBD';if(p.assignedSize!=='TBD')inv.G2XL--;});
   result.filter(p=>!p.isGoalie).sort((a,b)=>SKATER_SIZES.indexOf(b.preferredSize)-SKATER_SIZES.indexOf(a.preferredSize)).forEach(p=>{
     const start=Math.max(0,SKATER_SIZES.indexOf(p.preferredSize)); p.assignedSize='TBD';
-    for(let i=start;i<SKATER_SIZES.length;i++){const s=SKATER_SIZES[i];if((inv[s]||0)>0){p.assignedSize=s;inv[s]--;break;}}
+    for(let i=start;i<=Math.min(start+1,SKATER_SIZES.length-1);i++){const s=SKATER_SIZES[i];if((inv[s]||0)>0){p.assignedSize=s;inv[s]--;break;}}
   });
   return result;
 }
