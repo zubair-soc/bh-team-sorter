@@ -631,13 +631,13 @@ const HockeyTeamBalancer = () => {
   // ─────────────────────────────────────────────────────────────────────────
   if (authLoading) return <div className="min-h-screen grid place-items-center bg-slate-50 text-slate-600">Loading…</div>;
   if (!session) return (
-    <div className="min-h-screen grid place-items-center bg-slate-100 p-4">
-      <form onSubmit={signIn} className="w-full max-w-sm bg-white rounded-xl shadow-lg p-6 space-y-4">
-        <div><h1 className="text-2xl font-bold text-slate-800">BH Team Sorter</h1><p className="text-sm text-slate-500 mt-1">SOC staff sign in</p></div>
-        <input type="email" required value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} placeholder="Email" className="w-full border rounded-lg px-3 py-2"/>
+    <div className="min-h-screen grid place-items-center p-4 bg-[#0b0d12]">
+      <form onSubmit={signIn} className="w-full max-w-sm bg-white rounded-3xl shadow-2xl p-7 space-y-5 border border-white/10">
+        <div className="flex items-center gap-4 pb-2"><div className="soc-logo-mark">SOC</div><div><p className="text-xs font-extrabold tracking-[.18em] text-[#c8102e] uppercase">Shinny of Champions</p><h1 className="text-2xl font-black text-slate-900 tracking-tight">BH Team Sorter</h1><p className="text-sm text-slate-500 mt-1">Staff operations</p></div></div>
+        <input type="email" required value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} placeholder="Email" className="w-full soc-input px-4 py-3"/>
         <input type="password" required value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} placeholder="Password" className="w-full border rounded-lg px-3 py-2"/>
         {loginError && <p className="text-sm text-red-600">{loginError}</p>}
-        <button type="submit" className="w-full bg-slate-900 text-white rounded-lg py-2 font-semibold">Sign in</button>
+        <button type="submit" className="w-full soc-btn-primary py-3 font-extrabold">Sign in</button>
       </form>
     </div>
   );
@@ -653,17 +653,26 @@ const HockeyTeamBalancer = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto">
-
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">🏒 BH Team Balancer</h1>
-          <p className="text-slate-600">Keep friends together, balance goalies and women, fit jersey inventory, and build fair teams</p>
+    <div className="soc-shell">
+      <header className="soc-topbar">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 py-5 flex items-center gap-4">
+          <div className="soc-logo-mark">SOC</div>
+          <div className="min-w-0">
+            <p className="text-[11px] md:text-xs font-extrabold tracking-[.18em] text-[#d4af37] uppercase">Shinny of Champions</p>
+            <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">Beginner Hockey Team Sorter</h1>
+            <p className="hidden md:block text-sm text-slate-400 mt-0.5">Build fair teams around people, positions and uniform inventory.</p>
+          </div>
+          <div className="ml-auto hidden sm:flex items-center gap-2">
+            <span className="soc-pill px-3 py-1.5 text-xs font-bold text-slate-300 !bg-white/5 !border-white/10">{selectedSeason?.name || 'No season'}</span>
+            <button onClick={()=>supabase.auth.signOut()} className="px-3 py-2 text-sm font-bold text-white/80 hover:text-white rounded-xl hover:bg-white/10 flex items-center gap-2"><LogOut size={16}/> Sign out</button>
+          </div>
         </div>
+      </header>
+      <main className="max-w-7xl mx-auto p-4 md:p-8">
 
         {/* ── Season / Class Selector ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">Season & Class</h2>
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <h2 className="soc-card-title mb-4">Season & Class</h2>
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <label className="block text-sm font-medium text-slate-600 mb-1">Season</label>
@@ -712,12 +721,12 @@ const HockeyTeamBalancer = () => {
         </div>
 
         {/* ── Team Names ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">Team Names</h2>
-          <div className="grid grid-cols-2 gap-4">
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <h2 className="soc-card-title mb-4">Team Names</h2>
+          <div className="grid md:grid-cols-2 gap-4 soc-mobile-stack">
             {['team1','team2'].map(team=>(
-              <div key={team} className="border rounded-lg p-4">
-                <label className="block text-xs font-medium text-slate-500 mb-1">{team==='team1'?'Team 1':'Team 2'}</label>
+              <div key={team} className="border border-slate-200 rounded-2xl p-4 bg-slate-50/60" style={{borderTop:`4px solid ${teamColors[team]}`}}>
+                <label className="soc-label block mb-2">{team==='team1'?'Team 1':'Team 2'}</label>
                 <div className="flex items-center gap-3"><input type="color" value={teamColors[team]} onChange={e=>setTeamColors({...teamColors,[team]:e.target.value})} className="w-10 h-10 rounded cursor-pointer border"/><input type="text" value={teamNames[team]} onChange={e=>setTeamNames({...teamNames,[team]:e.target.value})} className="flex-1 text-lg font-semibold text-slate-800 border-0 border-b-2 border-transparent focus:border-blue-500 focus:outline-none bg-transparent pb-1 transition-colors" placeholder="Enter team name"/></div>
               </div>
             ))}
@@ -725,12 +734,12 @@ const HockeyTeamBalancer = () => {
         </div>
 
         {/* ── Inventory ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2"><Shirt className="text-blue-600"/> Inventory</h2>
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <h2 className="soc-card-title mb-4 flex items-center gap-2"><Shirt className="text-blue-600"/> Inventory</h2>
           <div className="grid md:grid-cols-2 gap-6">
             {['team1','team2'].map(team=>(
-              <div key={team} className="border rounded-lg p-4">
-                <h3 className="font-bold mb-3">{teamNames[team]}</h3>
+              <div key={team} className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50" style={{borderTop:`4px solid ${teamColors[team]}`}}>
+                <h3 className="font-extrabold text-slate-900 mb-3">{teamNames[team]}</h3>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Jerseys</p>
                 <div className="space-y-2 mb-4">
                   {sizes.map(size=>(
@@ -755,8 +764,8 @@ const HockeyTeamBalancer = () => {
         </div>
 
         {/* ── CSV Upload ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">Import Class CSV</h2>
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <h2 className="soc-card-title mb-4">Import Class CSV</h2>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col md:flex-row gap-4">
               <label className="flex-1 cursor-pointer">
@@ -781,16 +790,16 @@ const HockeyTeamBalancer = () => {
         </div>
 
         {/* ── Players ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <div className="soc-card p-5 md:p-6 mb-5">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-green-600"/> Players ({players.length})</h2>
+            <h2 className="soc-card-title flex items-center gap-2"><Users className="text-green-600"/> Players ({players.length})</h2>
             <button onClick={addPlayer} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">+ Add Player</button>
           </div>
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-auto soc-mobile-scroll">
             {players.map(player=>{
               const gi=friendGroups.findIndex(g=>g.includes(player.id));
               return(
-                <div key={player.id} className={`flex gap-2 items-center p-2 rounded ${gi>=0?groupColors[gi%groupColors.length]:'bg-white'} ${gi>=0?'border-2':'border'}`}>
+                <div key={player.id} className={`grid grid-cols-[minmax(130px,1fr)_64px_82px_auto_auto_auto] gap-2 items-center p-2 rounded-xl min-w-[650px] ${gi>=0?groupColors[gi%groupColors.length]:'bg-white'} ${gi>=0?'border-2':'border border-slate-200'}`}>
                   <input type="text" placeholder="Name" value={player.name} onChange={e=>updatePlayer(player.id,'name',e.target.value)} className="flex-1 px-2 py-1 border rounded"/>
                   <input type="number" min="0" max="10" step="0.5" value={player.isGoalie?'':player.rating} onChange={e=>updatePlayer(player.id,'rating',parseFloat(e.target.value)||0)} disabled={player.isGoalie} placeholder={player.isGoalie?'—':''} className="w-16 px-2 py-1 border rounded disabled:bg-slate-100 disabled:text-slate-400" title={player.isGoalie?'Goalies have no rating':'Rating (0-10)'}/>
                   <select value={player.preferredSize} onChange={e=>updatePlayer(player.id,'preferredSize',e.target.value)} className="px-2 py-1 border rounded">
@@ -806,8 +815,8 @@ const HockeyTeamBalancer = () => {
         </div>
 
         {/* ── Friend Groups ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">Friend Groups</h2>
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <h2 className="soc-card-title mb-4">Friend Groups</h2>
           <div className="space-y-4">
             <div className="border rounded-lg p-4">
               <h3 className="font-medium mb-2">Create New Group</h3>
@@ -835,16 +844,16 @@ const HockeyTeamBalancer = () => {
         </div>
 
         {/* ── Balance ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex gap-4">
-            <button onClick={balanceTeams} className="flex-1 px-6 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-bold text-lg flex items-center justify-center gap-2"><Shuffle size={24}/> Balance Teams</button>
-            <button onClick={clearTeams} className="px-6 py-4 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-bold text-lg">Clear Teams</button>
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button onClick={balanceTeams} className="flex-1 px-6 py-4 soc-btn-primary transition text-lg flex items-center justify-center gap-2"><Shuffle size={24}/> Balance Teams</button>
+            <button onClick={clearTeams} className="px-6 py-4 border border-slate-200 text-slate-600 bg-white rounded-xl hover:bg-slate-50 transition font-bold">Clear Teams</button>
           </div>
         </div>
 
         {/* ── Stats ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">Team Statistics</h2>
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <h2 className="soc-card-title mb-4">Team Statistics</h2>
           <div className="grid md:grid-cols-3 gap-4">
             {['team1','team2'].map(team=>(
               <div key={team} className="border rounded-lg p-4">
@@ -876,9 +885,9 @@ const HockeyTeamBalancer = () => {
         </div>
 
         {/* ── Export ── */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">Export Results</h2>
-          <div className="grid grid-cols-3 gap-4">
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <h2 className="soc-card-title mb-4">Export Results</h2>
+          <div className="grid md:grid-cols-3 gap-3 soc-mobile-stack">
             <button onClick={downloadForExcel} className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium flex items-center justify-center gap-2"><FileSpreadsheet size={20}/> Excel</button>
             <button onClick={downloadAdminRoster} className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center justify-center gap-2"><FileText size={20}/> Admin PDF</button>
             <button onClick={downloadPublicRoster} className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center justify-center gap-2"><Users size={20}/> Public PDF</button>
@@ -888,7 +897,7 @@ const HockeyTeamBalancer = () => {
 
         {/* ── Swap UI ── */}
         {players.some(p=>p.team)&&(
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="soc-card p-5 md:p-6 mb-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xl font-bold text-slate-800">Swap Players</h2>
               {selectedForSwap
@@ -926,8 +935,8 @@ const HockeyTeamBalancer = () => {
                 const tp=players.filter(p=>p.team===team);
                 const avg=tp.filter(p=>!p.isGoalie).length>0?(tp.filter(p=>!p.isGoalie).reduce((s,p)=>s+p.rating,0)/tp.filter(p=>!p.isGoalie).length).toFixed(2):'—';
                 return(
-                  <div key={team} className={`border-2 rounded-lg overflow-hidden ${team==='team1'?'border-teal-400':'border-orange-400'}`}>
-                    <div className={`${team==='team1'?'bg-teal-600':'bg-orange-600'} px-4 py-3 flex items-center justify-between`}>
+                  <div key={team} className="border rounded-2xl overflow-hidden shadow-sm bg-white" style={{borderColor:teamColors[team]}}>
+                    <div className="soc-team-head px-4 py-3 flex items-center justify-between" style={{backgroundColor:teamColors[team]}}>
                       <h3 className="font-bold text-white text-lg">{teamNames[team]}</h3>
                       <div className="flex items-center gap-2 bg-white/20 px-3 py-1 rounded-lg">
                         <Star className="text-yellow-300" size={16}/>
@@ -993,7 +1002,7 @@ const HockeyTeamBalancer = () => {
           </div>
         )}
 
-      </div>
+      </main>
     </div>
   );
 };
