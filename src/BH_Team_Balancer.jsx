@@ -51,6 +51,7 @@ const HockeyTeamBalancer = () => {
   const [saveState, setSaveState] = useState('');
   const [rosterLoaded, setRosterLoaded] = useState(false);
   const [hasAccess, setHasAccess] = useState(null);
+  const [friendGroupsOpen, setFriendGroupsOpen] = useState(false);
 
   const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
   const selectedClass = selectedSeason?.classes?.find(x => x.id === selectedClassId);
@@ -70,7 +71,7 @@ const HockeyTeamBalancer = () => {
   const setFriendGroups = val => updateCurrent(d => ({ ...d, friendGroups: typeof val === 'function' ? val(d.friendGroups) : val }));
   const setTeamColors = val => updateCurrent(d => ({ ...d, teamColors: typeof val === 'function' ? val(d.teamColors || defaultClassData().teamColors) : val }));
 
-  useEffect(() => { setNewGroup([]); setUploadError(''); setSelectedForSwap(null); }, [selectedClassId]);
+  useEffect(() => { setNewGroup([]); setUploadError(''); setSelectedForSwap(null); setFriendGroupsOpen(false); }, [selectedClassId]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session ?? null); setAuthLoading(false); });
@@ -821,8 +822,14 @@ const HockeyTeamBalancer = () => {
 
         {/* ── Friend Groups ── */}
         <div className="soc-card p-5 md:p-6 mb-5">
-          <h2 className="soc-card-title mb-4">Friend Groups</h2>
-          <div className="space-y-4">
+          <button type="button" onClick={()=>setFriendGroupsOpen(v=>!v)} className="w-full flex items-center gap-3 text-left">
+            <div className="flex-1">
+              <h2 className="soc-card-title">Friend Groups</h2>
+              <p className="text-sm text-slate-500 mt-1">{friendGroups.length} {friendGroups.length===1?'group':'groups'} · {new Set(friendGroups.flat()).size} players grouped</p>
+            </div>
+            <ChevronDown size={20} className={`text-slate-400 transition-transform ${friendGroupsOpen?'rotate-180':''}`}/>
+          </button>
+          {friendGroupsOpen && <div className="space-y-4 mt-5">
             <div className="border rounded-lg p-4">
               <h3 className="font-medium mb-2">Create New Group</h3>
               <div className="flex flex-wrap gap-2 mb-3">
@@ -845,7 +852,7 @@ const HockeyTeamBalancer = () => {
                 </div>
               </div>
             ))}
-          </div>
+          </div>}
         </div>
 
         {/* ── Balance ── */}
