@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Users, Shirt, Star, AlertCircle, Shuffle, X, Upload, Download, FileSpreadsheet, FileText, Plus, ChevronDown, Archive, Trash2, LogOut } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import { buildBalancedTeams, allocateJerseys, allocateSocks } from './teamBalancer';
 
 const defaultClassData = () => ({
   teamNames: { team1: 'Teal Tanglers', team2: 'Orange Crush' },
@@ -14,7 +15,7 @@ const defaultClassData = () => ({
     team2: { 'L 30"': 15, 'XL 32"': 4 }
   },
   players: [
-    { id: 1, name: '', rating: 5, preferredSize: 'M', isGoalie: false, isIR: false, isWoman: false, team: null }
+    { id: crypto.randomUUID(), name: '', rating: 5, preferredSize: 'M', isGoalie: false, isWoman: false, team: null }
   ],
   friendGroups: [],
   teamColors: { team1: '#0f766e', team2: '#ea580c' },
@@ -117,7 +118,6 @@ const HockeyTeamBalancer = () => {
         rating: p.goalie ? 0 : Number(p.rating ?? 5),
         preferredSize: p.preferred_size || 'L',
         isGoalie: p.goalie,
-        isIR: p.ir,
         isWoman: p.woman,
         team: a?.team === 1 ? 'team1' : a?.team === 2 ? 'team2' : null,
         assignedSize: a?.assigned_size || undefined,
@@ -327,7 +327,6 @@ const HockeyTeamBalancer = () => {
         const ratingIdx = header.findIndex(h => h.includes('rating'));
         const sizeIdx   = header.findIndex(h => h.includes('size') || h.includes('jersey'));
         const goalieIdx = header.findIndex(h => h.includes('goalie'));
-        const irIdx     = header.findIndex(h => h.includes('ir') || h.includes('injured'));
         const friendIdx = header.findIndex(h => h.includes('friend') || h.includes('group'));
         const womanIdx  = header.findIndex(h => h.includes('woman') || h.includes('female') || h.includes('gender'));
 
@@ -347,12 +346,11 @@ const HockeyTeamBalancer = () => {
           // Goalies don't need a rating — default to 0 so they don't affect team balance
           const rating = isGoalie ? 0 : (isNaN(rawRating) ? 5 : Math.max(0, Math.min(10, rawRating)));
           const preferredSize = cols[sizeIdx]?.toUpperCase() || 'L';
-          const isIR    = irIdx !== -1     && ['yes','true','1'].includes(cols[irIdx]?.toLowerCase());
           const isWoman = womanIdx !== -1  && ['yes','true','1','female','f','woman'].includes(cols[womanIdx]?.toLowerCase());
           const friendGroup = friendIdx !== -1 ? cols[friendIdx]?.trim() : '';
           const validSize = sizes.includes(preferredSize) ? preferredSize : 'L';
           const playerId = crypto.randomUUID();
-          newPlayers.push({ id: playerId, name, rating, preferredSize: validSize, isGoalie, isIR, isWoman, team: null });
+          newPlayers.push({ id: playerId, name, rating, preferredSize: validSize, isGoalie, isWoman, team: null });
           if (friendGroup) {
             if (!groupMap.has(friendGroup)) groupMap.set(friendGroup, []);
             groupMap.get(friendGroup).push(playerId);
@@ -382,14 +380,14 @@ const HockeyTeamBalancer = () => {
 
   const downloadTemplate = () => {
     const template = [
-      'Name,Rating,Preferred Size,Goalie,IR,Woman,Friend Group',
-      'John Smith,7,L,No,No,No,A',
-      'Jane Doe,6,M,No,No,Yes,A',
-      'Bob Wilson,,G2XL,Yes,No,No,',
-      'Sarah Lee,8,2XL,No,No,Yes,B',
-      'Mike Jones,5,L,No,No,No,B',
-      'Tom Brown,4,M,No,Yes,No,',
-      'Lisa White,,G2XL,Yes,No,Yes,',
+      'Name,Rating,Preferred Size,Goalie,Woman,Friend Group',
+      'John Smith,7,L,No,No,A',
+      'Jane Doe,6,M,No,Yes,A',
+      'Bob Wilson,,G2XL,Yes,No,',
+      'Sarah Lee,8,2XL,No,Yes,B',
+      'Mike Jones,5,L,No,No,B',
+      'Tom Brown,4,M,No,No,',
+      'Lisa White,,G2XL,Yes,Yes,',
     ].join('\n');
     const a = document.createElement('a');
     a.href = `data:text/csv;base64,${btoa(unescape(encodeURIComponent(template)))}`;
@@ -400,7 +398,7 @@ const HockeyTeamBalancer = () => {
   // ── Player CRUD ───────────────────────────────────────────────────────────
   const addPlayer = () => {
     const newId = crypto.randomUUID();
-    setPlayers(prev => [...prev, { id: newId, name: '', rating: 5, preferredSize: 'M', isGoalie: false, isIR: false, isWoman: false, team: null }]);
+    setPlayers(prev => [...prev, { id: newId, name: '', rating: 5, preferredSize: 'M', isGoalie: false, isWoman: false, team: null }]);
   };
   const updatePlayer = (id, field, value) => setPlayers(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   const removePlayer = (id) => {
@@ -415,107 +413,24 @@ const HockeyTeamBalancer = () => {
   const createFriendGroup = () => { if (newGroup.length >= 2) { setFriendGroups(prev => [...prev, [...newGroup]]); setNewGroup([]); } };
   const removeFriendGroup = (idx) => setFriendGroups(prev => prev.filter((_, i) => i !== idx));
 
-  // ── Jersey allocation helper ───────────────────────────────────────────────
-  const assignJerseys = (teamPlayers, inv) => {
-    const assignGoalie = (p) => { p.assignedSize = inv['G2XL'] > 0 ? (inv['G2XL']--, 'G2XL') : 'TBD'; };
-    const assignSkater = (p) => {
-      const si = skaterSizes.indexOf(p.preferredSize);
-      let done = false;
-      for (let i = si; i < skaterSizes.length; i++) {
-        if (inv[skaterSizes[i]] > 0) { p.assignedSize = skaterSizes[i]; inv[skaterSizes[i]]--; done = true; break; }
-      }
-      if (!done) p.assignedSize = 'TBD';
-    };
-    teamPlayers.filter(p => p.isGoalie && !p.isIR).forEach(assignGoalie);
-    teamPlayers.filter(p => !p.isGoalie && !p.isIR).sort((a, b) => skaterSizes.indexOf(a.preferredSize) - skaterSizes.indexOf(b.preferredSize)).forEach(assignSkater);
-    teamPlayers.filter(p => p.isGoalie && p.isIR).forEach(assignGoalie);
-    teamPlayers.filter(p => !p.isGoalie && p.isIR).sort((a, b) => skaterSizes.indexOf(a.preferredSize) - skaterSizes.indexOf(b.preferredSize)).forEach(assignSkater);
-  };
-
-  // ── Balance algorithm (goalies excluded from rating balance, count-aware) ──
+  // ── Constraint-aware balance: friends → goalies → women → jerseys → skill; roster size is hard ──
   const balanceTeams = () => {
-    const unassigned = players.filter(p => !p.team);
-    const assignments = {};
-    players.forEach(p => { if (p.team) assignments[p.id] = p.team; });
-    const unassignedIds = new Set(unassigned.map(p => p.id));
-
-    const skaterRatingOf = (team) => Object.entries(assignments)
-      .filter(([, t]) => t === team)
-      .reduce((s, [id]) => {
-        const p = players.find(p => p.id === id);
-        return s + (p.isGoalie ? 0 : p.rating);
-      }, 0);
-    const countOf = (team) => Object.values(assignments).filter(t => t === team).length;
-    const womenOf = (team) => Object.entries(assignments)
-      .filter(([, t]) => t === team)
-      .reduce((s, [id]) => s + (players.find(p => p.id === id).isWoman ? 1 : 0), 0);
-
-    // Decide which team a player/group should go to: prioritize keeping
-    // roster SIZE close, then break ties by skater rating.
-    const pickTeam = (incomingCount = 1) => {
-      const c1 = countOf('team1'), c2 = countOf('team2');
-      const sizeDiff = (c1 + incomingCount) - c2;
-      const sizeDiffAlt = (c2 + incomingCount) - c1;
-      // If adding to team1 would make the gap worse than adding to team2, go to team2 (and vice versa)
-      if (Math.abs(sizeDiff) > Math.abs(sizeDiffAlt)) return 'team2';
-      if (Math.abs(sizeDiffAlt) > Math.abs(sizeDiff)) return 'team1';
-      // Sizes would end up equally close either way — break tie by rating
-      return skaterRatingOf('team1') <= skaterRatingOf('team2') ? 'team1' : 'team2';
-    };
-
-    // Friend groups (skater ratings only for balance decision, count-aware)
-    const groups = friendGroups
-      .filter(g => g.every(id => unassignedIds.has(id)))
-      .map(g => ({
-        playerIds: g,
-        rating: g.reduce((s, id) => { const p = players.find(p => p.id === id); return s + (p.isGoalie ? 0 : p.rating); }, 0)
-      }))
-      .sort((a, b) => b.rating - a.rating);
-
-    groups.forEach(g => {
-      const w1 = womenOf('team1'), w2 = womenOf('team2');
-      const t = w1 !== w2
-        ? (w1 < w2 ? 'team1' : 'team2')
-        : pickTeam(g.playerIds.length);
-      g.playerIds.forEach(id => { assignments[id] = t; unassignedIds.delete(id); });
-    });
-
-    const remaining = unassigned.filter(p => unassignedIds.has(p.id));
-
-    // Goalies: keep goalie counts as even as possible, including any pre-assigned goalies.
-    const goalieCountOf = team => Object.entries(assignments)
-      .filter(([, t]) => t === team)
-      .reduce((n, [id]) => n + (players.find(p => p.id === id)?.isGoalie ? 1 : 0), 0);
-    const goalies = remaining.filter(p => p.isGoalie);
-    goalies.forEach(g => {
-      const g1 = goalieCountOf('team1'), g2 = goalieCountOf('team2');
-      assignments[g.id] = g1 <= g2 ? 'team1' : 'team2';
-    });
-
-    // Women skaters — alternate by rating, but respect count balance
-    const women = remaining.filter(p => !p.isGoalie && p.isWoman).sort((a, b) => b.rating - a.rating);
-    women.forEach((w) => { assignments[w.id] = pickTeam(1); });
-
-    // Men skaters — count-aware, rating as tiebreaker
-    const men = remaining.filter(p => !p.isGoalie && !p.isWoman).sort((a, b) => b.rating - a.rating);
-    men.forEach(p => { assignments[p.id] = pickTeam(1); });
-
-    // Jersey allocation
-    const t1Inv = { ...inventory.team1 };
-    const t2Inv = { ...inventory.team2 };
-    const t1p = players.map(p => ({ ...p, team: assignments[p.id] || p.team })).filter(p => p.team === 'team1');
-    const t2p = players.map(p => ({ ...p, team: assignments[p.id] || p.team })).filter(p => p.team === 'team2');
-    assignJerseys(t1p, t1Inv);
-    assignJerseys(t2p, t2Inv);
-
-    setPlayers(prev => prev.map(p => {
-      const team = assignments[p.id] || p.team || null;
-      const tp = team === 'team1' ? t1p.find(x => x.id === p.id) : team === 'team2' ? t2p.find(x => x.id === p.id) : null;
-      return { ...p, team, assignedSize: tp ? tp.assignedSize : undefined };
-    }));
+    try {
+      const validPlayers = players.filter(p => p.name?.trim());
+      const { team1, team2 } = buildBalancedTeams(validPlayers, friendGroups, inventory);
+      const withJerseys1 = allocateJerseys(team1.map(p=>({...p,team:'team1'})), inventory.team1);
+      const withJerseys2 = allocateJerseys(team2.map(p=>({...p,team:'team2'})), inventory.team2);
+      const withSocks1 = allocateSocks(withJerseys1, sockInventory.team1);
+      const withSocks2 = allocateSocks(withJerseys2, sockInventory.team2);
+      const assigned = new Map([...withSocks1,...withSocks2].map(p=>[p.id,p]));
+      setPlayers(prev => prev.map(p => assigned.has(p.id) ? { ...p, ...assigned.get(p.id) } : p));
+      setSelectedForSwap(null);
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
-  const clearTeams = () => setPlayers(prev => prev.map(p => ({ ...p, team: null, assignedSize: undefined })));
+  const clearTeams = () => setPlayers(prev => prev.map(p => ({ ...p, team: null, assignedSize: undefined, assignedSockSize: undefined })));
 
   // ── Jersey usage / remaining (for swap UI) ────────────────────────────────
   const jerseyUsage = useMemo(() => {
@@ -625,7 +540,6 @@ const HockeyTeamBalancer = () => {
       skaterRating: arr.filter(p => !p.isGoalie).reduce((s, p) => s + p.rating, 0),
       skaterCount: arr.filter(p => !p.isGoalie).length,
       goalies: arr.filter(p => p.isGoalie).length,
-      ir: arr.filter(p => p.isIR).length,
       women: arr.filter(p => p.isWoman).length,
     });
     let preferredSizeMet = 0, sizedUp = 0, unmetNeeds = 0;
@@ -660,14 +574,14 @@ const HockeyTeamBalancer = () => {
     const rosterAOA = [
       [`BH Hockey — ${seasonClassLabel}`],
       ["Change a player's TEAM column to swap them. All summary stats update automatically."],
-      ["#","Player Name","Team","Position","Rating","Pref. Size","Assigned Size","IR","Woman","Notes"],
+      ["#","Player Name","Team","Position","Rating","Pref. Size","Assigned Size","Socks","Woman","Notes"],
       ...allPlayers.map((p,i) => [
         i+1, p.name||`Player ${p.id}`,
         p.team==='team1'?t1name:t2name,
         p.isGoalie?'Goalie':'Skater',
         p.isGoalie?'—':p.rating,
         p.preferredSize, p.assignedSize||'TBD',
-        p.isIR?'Yes':'No', p.isWoman?'Yes':'No', ''
+        p.assignedSockSize||'TBD', p.isWoman?'Yes':'No', ''
       ])
     ];
     const ws = XLSX.utils.aoa_to_sheet(rosterAOA);
@@ -682,7 +596,6 @@ const HockeyTeamBalancer = () => {
         const addr=`${col}${row}`; if(!ws[addr]) ws[addr]={t:'s',v:''};
         let s={font:mkFont(DARK,10,false),alignment:ci===1?lft:ctr,border:mkBorder()};
         if(ci===2){s.font=mkFont(WHITE,10,true);s.fill=mkFill(tc);}
-        else if(ci===7&&p.isIR){s.font=mkFont(RED,10,true);s.fill=mkFill('FEF2F2');}
         else if(ci===8&&p.isWoman){s.font=mkFont('7C3AED',10,true);s.fill=mkFill(rf);}
         else{s.fill=mkFill(rf);}
         ws[addr].s=s;
@@ -704,7 +617,6 @@ const HockeyTeamBalancer = () => {
       ['Avg Skater Rtg', {f:'=IFERROR(B4/COUNTIFS(Roster!C'+firstDataRow+':C'+lastDataRow+',"'+t1name+'",Roster!D'+firstDataRow+':D'+lastDataRow+',"Skater"),0)'}, {f:'=IFERROR(C4/COUNTIFS(Roster!C'+firstDataRow+':C'+lastDataRow+',"'+t2name+'",Roster!D'+firstDataRow+':D'+lastDataRow+',"Skater"),0)'}],
       ['Goalies',        {f:cif(t1name,'D','Goalie')}, {f:cif(t2name,'D','Goalie')}],
       ['Women',          {f:cif(t1name,'I','Yes')},    {f:cif(t2name,'I','Yes')}],
-      ['IR Players',     {f:cif(t1name,'H','Yes')},    {f:cif(t2name,'H','Yes')}],
       [],
       [{f:`=IF(ABS(B4-C4)>B3*0.5,"⚠️ Teams may be unbalanced — skater rating diff: "&TEXT(ABS(B4-C4),"0.0"),"✅ Teams are balanced")`}],
       [],
@@ -721,7 +633,7 @@ const HockeyTeamBalancer = () => {
     ts['!merges']=[{s:{r:0,c:0},e:{r:0,c:2}},{s:{r:9,c:0},e:{r:9,c:2}},{s:{r:11,c:0},e:{r:11,c:2}}];
     stl(ts,'A1',{font:mkFont(WHITE,13,true),fill:mkFill(DARK),alignment:ctr});
     ['A','B','C'].forEach((col,i) => stl(ts,`${col}2`,{font:mkFont(WHITE,11,true),fill:mkFill(i===0?DARK:i===1?TEAL:ORANGE),alignment:ctr,border:mkBorder()}));
-    for(let r=3;r<=8;r++){
+    for(let r=3;r<=7;r++){
       stl(ts,`A${r}`,{font:mkFont(DARK,10,true),fill:mkFill(LIGHT),alignment:lft,border:mkBorder()});
       ['B','C'].forEach(col => stl(ts,`${col}${r}`,{font:mkFont(DARK,10,false),fill:mkFill(WHITE),alignment:ctr,border:mkBorder()}));
     }
@@ -742,9 +654,9 @@ const HockeyTeamBalancer = () => {
   const downloadAdminRoster = () => {
     const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2');
     let c=`HOCKEY ROSTER - ADMIN\nSeason/Class: ${seasonClassLabel}\nGenerated: ${new Date().toLocaleDateString()}\n\n================\nTEAM 1: ${teamNames.team1.toUpperCase()}\n================\n`;
-    t1.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'} | Status: ${p.isIR?'IR':'Active'}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
+    t1.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
     c+=`\nTotal: ${t1.length} | Skater Rating: ${stats.team1.skaterRating} | Avg: ${stats.team1.skaterCount>0?(stats.team1.skaterRating/stats.team1.skaterCount).toFixed(2):0}\n\n================\nTEAM 2: ${teamNames.team2.toUpperCase()}\n================\n`;
-    t2.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'} | Status: ${p.isIR?'IR':'Active'}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
+    t2.forEach(p=>{const gi=friendGroups.findIndex(g=>g.includes(p.id));c+=`\n${p.name||'Unknown'} | ${p.isGoalie?'Goalie':'Skater'}${p.isGoalie?'':` | Rating: ${p.rating}`}\n  Jersey: ${p.preferredSize} → ${p.assignedSize||'TBD'}${p.isWoman?' | W':''}\n  ${gi>=0?`Friend Group ${gi+1}`:'No Group'}\n`;});
     c+=`\nTotal: ${t2.length} | Skater Rating: ${stats.team2.skaterRating} | Avg: ${stats.team2.skaterCount>0?(stats.team2.skaterRating/stats.team2.skaterCount).toFixed(2):0}\n`;
     const a=document.createElement('a'); a.href=`data:text/plain;base64,${btoa(unescape(encodeURIComponent(c)))}`;
     a.download='hockey_admin_roster.txt'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -753,9 +665,9 @@ const HockeyTeamBalancer = () => {
   const downloadPublicRoster = () => {
     const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2');
     let c=`HOCKEY ROSTER\nSeason/Class: ${seasonClassLabel}\nGenerated: ${new Date().toLocaleDateString()}\n\n================\nTEAM 1: ${teamNames.team1.toUpperCase()}\n================\n`;
-    t1.forEach(p=>{c+=`${p.name||'Unknown'} — ${p.isGoalie?'Goalie':'Skater'}${p.isIR?' (IR)':''}\n`;});
+    t1.forEach(p=>{c+=`${p.name||'Unknown'} — ${p.isGoalie?'Goalie':'Skater'}\n`;});
     c+=`\nTotal: ${t1.length} | Goalies: ${stats.team1.goalies}\n\n================\nTEAM 2: ${teamNames.team2.toUpperCase()}\n================\n`;
-    t2.forEach(p=>{c+=`${p.name||'Unknown'} — ${p.isGoalie?'Goalie':'Skater'}${p.isIR?' (IR)':''}\n`;});
+    t2.forEach(p=>{c+=`${p.name||'Unknown'} — ${p.isGoalie?'Goalie':'Skater'}\n`;});
     c+=`\nTotal: ${t2.length} | Goalies: ${stats.team2.goalies}\n`;
     const a=document.createElement('a'); a.href=`data:text/plain;base64,${btoa(unescape(encodeURIComponent(c)))}`;
     a.download='hockey_public_roster.txt'; document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -793,7 +705,7 @@ const HockeyTeamBalancer = () => {
 
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-slate-800 mb-2">🏒 BH Team Balancer</h1>
-          <p className="text-slate-600">Balance teams by skill, manage jerseys, and respect friend groups</p>
+          <p className="text-slate-600">Keep friends together, balance goalies and women, fit jersey inventory, and build fair teams</p>
         </div>
 
         {/* ── Season / Class Selector ── */}
@@ -909,7 +821,7 @@ const HockeyTeamBalancer = () => {
             </div>
             {uploadError&&(<div className="p-3 bg-red-50 border border-red-200 rounded flex items-start gap-2"><AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20}/><p className="text-sm text-red-800">{uploadError}</p></div>)}
             <div className="text-xs text-slate-500 space-y-1">
-              <p><strong>Columns:</strong> Name, Rating (blank for goalies), Preferred Size, Goalie, IR, Woman, Friend Group</p>
+              <p><strong>Columns:</strong> Name, Rating (blank for goalies), Preferred Size, Goalie, Woman, Friend Group</p>
               <p>Team names, colours and inventory are saved with the class and do not need to be re-uploaded.</p>
             </div>
           </div>
@@ -932,7 +844,6 @@ const HockeyTeamBalancer = () => {
                     {sizes.map(s=><option key={s} value={s}>{s}</option>)}
                   </select>
                   <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={player.isGoalie} onChange={e=>updatePlayer(player.id,'isGoalie',e.target.checked)}/> G</label>
-                  <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={player.isIR} onChange={e=>updatePlayer(player.id,'isIR',e.target.checked)}/> IR</label>
                   <label className="flex items-center gap-1 text-sm"><input type="checkbox" checked={player.isWoman} onChange={e=>updatePlayer(player.id,'isWoman',e.target.checked)}/> W</label>
                   <button onClick={()=>removePlayer(player.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><X size={18}/></button>
                 </div>
@@ -991,7 +902,6 @@ const HockeyTeamBalancer = () => {
                   <p>Avg Skater Rtg: <span className="font-bold">{stats[team].skaterCount>0?(stats[team].skaterRating/stats[team].skaterCount).toFixed(2):'—'}</span></p>
                   <p>Goalies: <span className="font-bold">{stats[team].goalies}</span></p>
                   <p>Women: <span className="font-bold">{stats[team].women}</span></p>
-                  {stats[team].ir>0&&<p className="text-red-600">IR: <span className="font-bold">{stats[team].ir}</span></p>}
                 </div>
               </div>
             ))}
@@ -1094,7 +1004,6 @@ const HockeyTeamBalancer = () => {
                                 <p className="text-xs text-slate-500 mt-0.5">
                                   {player.isGoalie?'Goalie':`⭐ ${player.rating}`}
                                   {player.isWoman&&' · W'}
-                                  {player.isIR&&<span className="text-red-500"> · IR</span>}
                                 </p>
                               </div>
                               <div className="flex items-center gap-1.5">
