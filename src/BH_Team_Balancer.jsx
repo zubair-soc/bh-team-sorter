@@ -49,6 +49,7 @@ const HockeyTeamBalancer = () => {
   const [showArchived, setShowArchived] = useState(false);
   const [saveState, setSaveState] = useState('');
   const [rosterLoaded, setRosterLoaded] = useState(false);
+  const [hasAccess, setHasAccess] = useState(null);
 
   const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
   const selectedClass = selectedSeason?.classes?.find(x => x.id === selectedClassId);
@@ -145,9 +146,11 @@ const HockeyTeamBalancer = () => {
       supabase.from('bh_staff_access').select('user_id,active').eq('user_id', session.user.id)
     ]);
     if (accessError || !accessRows?.[0]?.active) {
+      setHasAccess(false);
       setLoginError('This account is not authorized for BH Team Sorter.');
       return;
     }
+    setHasAccess(true);
     if (se || ce) { setLoginError((se || ce).message); return; }
 
     const mapped = (seasonRows || []).map(s => ({ ...s, classes: (classRows || []).filter(c => c.season_id === s.id) }));
@@ -771,6 +774,16 @@ const HockeyTeamBalancer = () => {
         {loginError && <p className="text-sm text-red-600">{loginError}</p>}
         <button type="submit" className="w-full bg-slate-900 text-white rounded-lg py-2 font-semibold">Sign in</button>
       </form>
+    </div>
+  );
+  if (hasAccess === null) return <div className="min-h-screen grid place-items-center bg-slate-50 text-slate-600">Checking BH access…</div>;
+  if (!hasAccess) return (
+    <div className="min-h-screen grid place-items-center bg-slate-100 p-4">
+      <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-6 text-center">
+        <h1 className="text-xl font-bold text-slate-800">BH Team Sorter</h1>
+        <p className="text-red-600 mt-3">This account is not authorized for the BH Team Sorter.</p>
+        <button onClick={()=>{setHasAccess(null);supabase.auth.signOut();}} className="mt-5 px-4 py-2 bg-slate-900 text-white rounded-lg">Sign out</button>
+      </div>
     </div>
   );
 
