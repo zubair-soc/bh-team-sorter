@@ -2,7 +2,6 @@
   "name": "hockey-team-balancer",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "dependencies": {
     "@supabase/supabase-js": "2.58.0",
     "lucide-react": "0.263.1",
