@@ -438,7 +438,7 @@ const HockeyTeamBalancer = () => {
     if (player.customJerseyId) return customJerseys.find(j=>j.id===player.customJerseyId)?.number || '';
     if (!player.team || !player.assignedSize || player.assignedSize === 'TBD') return '';
     const list = parseJerseyNumbers(jerseyNumbers?.[player.team]?.[player.assignedSize]);
-    const sameSize = players.filter(p => p.team===player.team && p.assignedSize===player.assignedSize);
+    const sameSize = players.filter(p => p.team===player.team && p.assignedSize===player.assignedSize && !p.customJerseyId);
     const idx = sameSize.findIndex(p => p.id===player.id);
     return idx >= 0 ? (list[idx] || '') : '';
   };
@@ -485,7 +485,7 @@ const HockeyTeamBalancer = () => {
     const usage = { team1: {}, team2: {} };
     sizes.forEach(s => { usage.team1[s] = 0; usage.team2[s] = 0; });
     players.forEach(p => {
-      if (p.team && p.assignedSize && p.assignedSize !== 'TBD')
+      if (p.team && p.assignedSize && p.assignedSize !== 'TBD' && !p.customJerseyId)
         usage[p.team][p.assignedSize] = (usage[p.team][p.assignedSize] || 0) + 1;
     });
     return usage;
@@ -930,7 +930,7 @@ const HockeyTeamBalancer = () => {
                     {sizes.map(size=>{
                       const rem=jerseyRemaining[team][size];
                       return(
-                        <span key={size} className={`px-2 py-1 rounded text-xs font-bold border ${rem===0?'bg-red-50 text-red-600 border-red-200':rem<=1?'bg-yellow-50 text-yellow-700 border-yellow-200':'bg-green-50 text-green-700 border-green-200'}`}>
+                        <span key={size} className={`px-2 py-1 rounded text-xs font-bold border ${rem<0?'bg-red-50 text-red-600 border-red-200':rem<=1?'bg-yellow-50 text-yellow-700 border-yellow-200':'bg-green-50 text-green-700 border-green-200'}`}>
                           {size}: {rem}
                         </span>
                       );
