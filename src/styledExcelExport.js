@@ -42,7 +42,17 @@ export async function writeStyledRoster(sheets,filename,teamNames,teamColors){
       title.eachCell({includeEmpty:true},c=>{fill(c,'171B24');c.font={name:'Aptos Display',size:14,bold:true,color:{argb:'FFFFFFFF'}};c.alignment={vertical:'middle'};});
       const head=ws.getRow(2);head.height=22;head.eachCell({includeEmpty:true},c=>{fill(c,'E9EDF2');c.font={name:'Aptos',size:10,bold:true,color:{argb:'FF1F2937'}};c.border=border;});
       for(let r=3;r<=ws.rowCount;r++)ws.getRow(r).eachCell({includeEmpty:true},c=>{fill(c,r%2?'F7F8FA':'FFFFFF');c.font={name:'Aptos',size:10,color:{argb:'FF253247'}};c.border=border;});
-      if(sheet.kind==='public')ws.autoFilter={from:{row:2,column:1},to:{row:Math.max(2,ws.rowCount),column:maxCol}};
+      if(sheet.kind==='public'){
+        ws.autoFilter={from:{row:2,column:1},to:{row:Math.max(2,ws.rowCount),column:maxCol}};
+        for(let r=3;r<=ws.rowCount;r++){
+          const row=ws.getRow(r), team=String(row.getCell(1).value||'');
+          const idx=team===teamNames.team1?0:team===teamNames.team2?1:-1;
+          if(idx>=0){
+            const color=rgb(idx===0?teamColors.team1:teamColors.team2),fg=textColor(color);
+            row.eachCell({includeEmpty:true},cell=>{fill(cell,color);cell.font={name:'Aptos',size:10,bold:true,color:{argb:'FF'+fg}};cell.border=border;});
+          }
+        }
+      }
       ws.pageSetup={paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0};
     }
     ws.headerFooter.oddFooter='Shinny of Champions  •  Page &P of &N';
