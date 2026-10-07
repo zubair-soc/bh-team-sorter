@@ -560,18 +560,19 @@ const HockeyTeamBalancer = () => {
       const fg=p=>{const i=friendGroups.findIndex(g=>g.includes(p.id));return i>=0?`Group ${i+1}`:'';};
       const jn=p=>jerseyNumberForPlayer(p)||'';
       const jerseyLabel=p=>p.customJerseyId?`#${jn(p)} · ${p.assignedSize||'TBD'} (Custom)`:(jn(p)?`#${jn(p)}`:'');
+      const byJersey=(a,b)=>{if(a.isGoalie!==b.isGoalie)return a.isGoalie?-1:1;const na=Number.parseInt(String(jn(a)).replace(/^#/,'').trim(),10),nb=Number.parseInt(String(jn(b)).replace(/^#/,'').trim(),10);const va=Number.isFinite(na),vb=Number.isFinite(nb);if(va&&vb&&na!==nb)return na-nb;if(va!==vb)return va?-1:1;return a.name.localeCompare(b.name);};
       const teamRows=(team,arr)=>[
         [teamNames[team]],
         [seasonClassLabel],
-        ['#','Player','Position','Rating','Preferred','Assigned','Woman','Friend Group'],
-        ...[...arr].sort((a,b)=>(b.isGoalie-a.isGoalie)||(b.rating-a.rating)||a.name.localeCompare(b.name)).map(p=>[
-          jerseyLabel(p),p.name,p.isGoalie?'Goalie':'Skater',p.isGoalie?'—':p.rating,p.preferredSize,p.assignedSize||'TBD',p.isWoman?'Yes':'',fg(p)
+        ['#','Player','Position','Rating','Preferred','Assigned','Friend Group'],
+        ...[...arr].sort(byJersey).map(p=>[
+          jerseyLabel(p),p.name,p.isGoalie?'Goalie':'Skater',p.isGoalie?'—':p.rating,p.preferredSize,p.assignedSize||'TBD',fg(p)
         ])
       ];
       const publicRows=[
         ['BH Hockey — '+seasonClassLabel],
         ['Team','Jersey #','Player'],
-        ...all.map(p=>[p.team==='team1'?teamNames.team1:teamNames.team2,jn(p),p.name])
+        ...[...t1].sort(byJersey).concat([...t2].sort(byJersey)).map(p=>[p.team==='team1'?teamNames.team1:teamNames.team2,jn(p),p.name])
       ];
       const calc=arr=>{const sk=arr.filter(p=>!p.isGoalie),total=sk.reduce((x,p)=>x+p.rating,0);return [arr.length,sk.length?(total/sk.length).toFixed(2):'—',arr.filter(p=>p.isGoalie).length,arr.filter(p=>p.isWoman).length,arr.filter(p=>p.assignedSize===p.preferredSize).length,arr.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length,arr.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length];};
       const a=calc(t1),b=calc(t2);
@@ -582,7 +583,7 @@ const HockeyTeamBalancer = () => {
         ['Preferred-size jerseys',a[4],b[4]],['Sized up',a[5],b[5]],['No jersey',a[6],b[6]]
       ];
       const sheets=[
-        {name:teamNames.team1.slice(0,31),kind:'team',team:'team1',rows:teamRows('team1',t1),widths:[18,28,12,10,12,12,10,16]},
+        {name:teamNames.team1.slice(0,31),kind:'team',team:'team1',rows:teamRows('team1',t1),widths:[18,28,12,10,12,12,16]},
         {name:teamNames.team2.slice(0,31),kind:'team',team:'team2',rows:teamRows('team2',t2),widths:[18,28,12,10,12,12,10,16]},
         {name:'Public Teams',kind:'public',rows:publicRows,widths:[22,12,28]},
         {name:'Summary',kind:'summary',rows:summary,widths:[25,22,22]}
