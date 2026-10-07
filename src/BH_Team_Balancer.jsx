@@ -555,21 +555,41 @@ const HockeyTeamBalancer = () => {
   // ── Excel export ──────────────────────────────────────────────────────────
   const downloadForExcel = async () => {
     try {
-    const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2'), all=[...t1,...t2];
-    if(!all.length){alert('Balance teams first.');return;}
-    const sheets=[], tn=p=>p.team==='team1'?teamNames.team1:teamNames.team2;
-    const jn=p=>jerseyNumberForPlayer(p)||'', fg=p=>{const i=friendGroups.findIndex(g=>g.includes(p.id));return i>=0?`Friend Group ${i+1}`:'';};
-    const add=(name,rows,widths)=>sheets.push({name,rows,widths});
-    add('Public Teams',[['BH Hockey — '+seasonClassLabel],['Team','Jersey #','Player'],...all.map(p=>[tn(p),jn(p),p.name])],[22,12,28]);
-    add('Admin Roster',[['BH Hockey — '+seasonClassLabel],['Player','Team','Jersey #','Assigned Size','Preferred Size','Position','Rating','Woman','Friend Group'],...all.map(p=>[p.name,tn(p),jn(p),p.assignedSize||'TBD',p.preferredSize,p.isGoalie?'Goalie':'Skater',p.isGoalie?'—':p.rating,p.isWoman?'Yes':'No',fg(p)])],[28,22,12,15,15,12,10,10,18]);
-    const calc=arr=>{const sk=arr.filter(p=>!p.isGoalie),total=sk.reduce((x,p)=>x+p.rating,0),top=[...sk].sort((a,b)=>b.rating-a.rating).slice(0,Math.max(1,Math.ceil(sk.length*.25)));return{count:arr.length,total,avg:sk.length?(total/sk.length).toFixed(2):'—',g:arr.filter(p=>p.isGoalie).length,w:arr.filter(p=>p.isWoman).length,top:top.map(p=>`${p.name} (${p.rating})`).join(', ')};};
-    const a=calc(t1),b=calc(t2),exceptions=all.flatMap(p=>{const x=[];if(!p.assignedSize||p.assignedSize==='TBD')x.push([tn(p),p.name,'No jersey available']);else if(p.assignedSize!==p.preferredSize)x.push([tn(p),p.name,`Sized up: ${p.preferredSize} → ${p.assignedSize}`]);if(p.assignedSize&&p.assignedSize!=='TBD'&&!jn(p))x.push([tn(p),p.name,`No jersey number assigned (${p.assignedSize})`]);return x;});
-    add('Team Summary',[['Team Summary — '+seasonClassLabel],['Metric',teamNames.team1,teamNames.team2],['Players',a.count,b.count],['Total skater rating',a.total,b.total],['Average skater rating',a.avg,b.avg],['Goalies',a.g,b.g],['Women',a.w,b.w],['Top 25% skaters',a.top,b.top],[],['Jersey fit','',''],['Preferred size',t1.filter(p=>p.assignedSize===p.preferredSize).length,t2.filter(p=>p.assignedSize===p.preferredSize).length],['Sized up',t1.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length,t2.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length],['No jersey',t1.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length,t2.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length],[],['Exceptions','Player','Issue'],...(exceptions.length?exceptions:[['None','','']])],[24,42,42]);
-    const pull=[...all].sort((x,y)=>tn(x).localeCompare(tn(y))||(Number(jn(x))||9999)-(Number(jn(y))||9999)||String(jn(x)).localeCompare(String(jn(y)),undefined,{numeric:true}));
-    add('Jersey Pull List',[['Jersey Pull List — '+seasonClassLabel],['Team','Jersey #','Size','Player'],...pull.map(p=>[tn(p),jn(p),p.assignedSize||'TBD',p.name])],[22,12,12,28]);
-    const safe=s=>(s||'').replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'');
-    const {writeStyledRoster}=await import('./styledExcelExport.js');
-    await writeStyledRoster(sheets,`BH_Roster_${safe(selectedSeason?.name)}_${safe(selectedClass?.name)}.xlsx`,teamNames,teamColors);
+      const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2'), all=[...t1,...t2];
+      if(!all.length){alert('Balance teams first.');return;}
+      const fg=p=>{const i=friendGroups.findIndex(g=>g.includes(p.id));return i>=0?`Group ${i+1}`:'';};
+      const jn=p=>jerseyNumberForPlayer(p)||'';
+      const jerseyLabel=p=>p.customJerseyId?`#${jn(p)} · ${p.assignedSize||'TBD'} (Custom)`:(jn(p)?`#${jn(p)}`:'');
+      const teamRows=(team,arr)=>[
+        [teamNames[team]],
+        [seasonClassLabel],
+        ['#','Player','Position','Rating','Preferred','Assigned','Woman','Friend Group'],
+        ...[...arr].sort((a,b)=>(b.isGoalie-a.isGoalie)||(b.rating-a.rating)||a.name.localeCompare(b.name)).map(p=>[
+          jerseyLabel(p),p.name,p.isGoalie?'Goalie':'Skater',p.isGoalie?'—':p.rating,p.preferredSize,p.assignedSize||'TBD',p.isWoman?'Yes':'',fg(p)
+        ])
+      ];
+      const publicRows=[
+        ['BH Hockey — '+seasonClassLabel],
+        ['Team','Jersey #','Player'],
+        ...all.map(p=>[p.team==='team1'?teamNames.team1:teamNames.team2,jn(p),p.name])
+      ];
+      const calc=arr=>{const sk=arr.filter(p=>!p.isGoalie),total=sk.reduce((x,p)=>x+p.rating,0);return [arr.length,sk.length?(total/sk.length).toFixed(2):'—',arr.filter(p=>p.isGoalie).length,arr.filter(p=>p.isWoman).length,arr.filter(p=>p.assignedSize===p.preferredSize).length,arr.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length,arr.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length];};
+      const a=calc(t1),b=calc(t2);
+      const summary=[
+        ['Team Summary — '+seasonClassLabel],
+        ['Metric',teamNames.team1,teamNames.team2],
+        ['Players',a[0],b[0]],['Avg skater rating',a[1],b[1]],['Goalies',a[2],b[2]],['Women',a[3],b[3]],
+        ['Preferred-size jerseys',a[4],b[4]],['Sized up',a[5],b[5]],['No jersey',a[6],b[6]]
+      ];
+      const sheets=[
+        {name:teamNames.team1.slice(0,31),kind:'team',team:'team1',rows:teamRows('team1',t1),widths:[18,28,12,10,12,12,10,16]},
+        {name:teamNames.team2.slice(0,31),kind:'team',team:'team2',rows:teamRows('team2',t2),widths:[18,28,12,10,12,12,10,16]},
+        {name:'Public Teams',kind:'public',rows:publicRows,widths:[22,12,28]},
+        {name:'Summary',kind:'summary',rows:summary,widths:[25,22,22]}
+      ];
+      const safe=s=>(s||'').replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'');
+      const {writeStyledRoster}=await import('./styledExcelExport.js');
+      await writeStyledRoster(sheets,`BH_Roster_${safe(selectedSeason?.name)}_${safe(selectedClass?.name)}.xlsx`,teamNames,teamColors);
     } catch(error) { console.error('Excel export failed',error); alert(`Excel export failed: ${error.message}`); }
   };
 
