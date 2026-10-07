@@ -443,14 +443,14 @@ const HockeyTeamBalancer = () => {
     return idx >= 0 ? (list[idx] || '') : '';
   };
 
-  const addCustomJersey = () => setCustomJerseys(prev => [...prev, { id:crypto.randomUUID(), playerName:'', number:'', size:'L' }]);
+  const addCustomJersey = () => setCustomJerseys(prev => [...prev, { id:crypto.randomUUID(), playerName:'', number:'', size:'L', team:'team1' }]);
   const updateCustomJersey = (id,field,value) => setCustomJerseys(prev => prev.map(j=>j.id===id?{...j,[field]:value}:j));
   const removeCustomJersey = id => { setCustomJerseys(prev=>prev.filter(j=>j.id!==id)); setPlayers(prev=>prev.map(p=>p.customJerseyId===id?{...p,customJerseyId:undefined}:p)); };
-  const customForPlayer = player => customJerseys.filter(j=>j.playerName.trim() && j.playerName.trim().toLowerCase()===String(player.name||'').trim().toLowerCase());
+  const customForPlayer = player => customJerseys.filter(j=>j.playerName.trim() && j.playerName.trim().toLowerCase()===String(player.name||'').trim().toLowerCase() && (!j.team || j.team===player.team));
   const setPlayerJerseyChoice = (player, value) => {
     if (value.startsWith('custom:')) {
       const id=value.slice(7), jersey=customJerseys.find(j=>j.id===id);
-      if(jersey) setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,customJerseyId:id,assignedSize:jersey.size}:p));
+      if(jersey && (!jersey.team || jersey.team===player.team)) setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,customJerseyId:id,assignedSize:jersey.size}:p));
     } else {
       setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,customJerseyId:undefined,assignedSize:value}:p));
     }
@@ -746,12 +746,13 @@ const HockeyTeamBalancer = () => {
         {/* ── Custom Jerseys ── */}
         <div className="soc-card p-5 md:p-6 mb-5">
           <button type="button" onClick={()=>setCustomJerseysOpen(v=>!v)} className="w-full flex items-center gap-3 text-left">
-            <div className="flex-1"><h2 className="soc-card-title">Custom Jerseys</h2><p className="text-sm text-slate-500 mt-1">{customJerseys.length} reserved · name, number and actual size</p></div>
+            <div className="flex-1"><h2 className="soc-card-title">Custom Jerseys</h2><p className="text-sm text-slate-500 mt-1">{customJerseys.length} reserved · player, team, number and size</p></div>
             <ChevronDown size={20} className={`text-slate-400 transition-transform ${customJerseysOpen?'rotate-180':''}`}/>
           </button>
           {customJerseysOpen && <div className="mt-4 space-y-2">
-            {customJerseys.map(j=><div key={j.id} className="grid grid-cols-[1fr_80px_90px_34px] gap-2 items-center">
+            {customJerseys.map(j=><div key={j.id} className="grid grid-cols-1 sm:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_70px_90px_34px] gap-2 items-center">
               <input value={j.playerName} onChange={e=>updateCustomJersey(j.id,'playerName',e.target.value)} placeholder="Player name (e.g. Semper)" className="soc-input px-3 py-2"/>
+              <select value={j.team||'team1'} onChange={e=>updateCustomJersey(j.id,'team',e.target.value)} className="soc-input px-2 py-2"><option value="team1">{teamNames.team1}</option><option value="team2">{teamNames.team2}</option></select>
               <input value={j.number} onChange={e=>updateCustomJersey(j.id,'number',e.target.value)} placeholder="#" className="soc-input px-3 py-2"/>
               <select value={j.size} onChange={e=>updateCustomJersey(j.id,'size',e.target.value)} className="soc-input px-2 py-2">{sizes.map(s=><option key={s}>{s}</option>)}</select>
               <button onClick={()=>removeCustomJersey(j.id)} className="text-red-600"><X size={18}/></button>
