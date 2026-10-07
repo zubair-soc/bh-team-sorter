@@ -751,9 +751,9 @@ const HockeyTeamBalancer = () => {
           </button>
           {customJerseysOpen && <div className="mt-4 space-y-2">
             {customJerseys.map(j=><div key={j.id} className="grid grid-cols-1 sm:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_70px_90px_34px] gap-2 items-center">
-              <select value={j.playerName||''} onChange={e=>updateCustomJersey(j.id,'playerName',e.target.value)} className="soc-input px-3 py-2">
-                <option value="">Unassigned — assign later</option>
-                {[...players].filter(p=>p.name?.trim() && (!p.team || p.team===j.team)).sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}{p.team?' · '+teamNames[p.team]:''}</option>)}
+              <select value={j.playerName||''} onChange={e=>{const name=e.target.value;const player=players.find(p=>p.name===name);setCustomJerseys(prev=>prev.map(item=>item.id===j.id?{...item,playerName:name,...(player?.team?{team:player.team}:{})}:item));}} className="soc-input px-3 py-2">
+                <option value="">Assign Player (Optional)</option>
+                {[...players].filter(p=>p.name?.trim()).sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}{p.team?' · '+teamNames[p.team]:''}</option>)}
                 {j.playerName && !players.some(p=>p.name===j.playerName) && <option value={j.playerName}>{j.playerName} (not in roster)</option>}
               </select>
               <select value={j.team||'team1'} onChange={e=>updateCustomJersey(j.id,'team',e.target.value)} className="soc-input px-2 py-2"><option value="team1">{teamNames.team1}</option><option value="team2">{teamNames.team2}</option></select>
