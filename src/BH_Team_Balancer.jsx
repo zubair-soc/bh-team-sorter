@@ -553,13 +553,13 @@ const HockeyTeamBalancer = () => {
   }, [players]);
 
   // ── Excel export ──────────────────────────────────────────────────────────
-  const downloadForExcel = () => {
-    if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet. Please try again.'); return; }
+  const downloadForExcel = async () => {
+    try {
     const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2'), all=[...t1,...t2];
     if(!all.length){alert('Balance teams first.');return;}
-    const wb=XLSX.utils.book_new(), tn=p=>p.team==='team1'?teamNames.team1:teamNames.team2;
+    const sheets=[], tn=p=>p.team==='team1'?teamNames.team1:teamNames.team2;
     const jn=p=>jerseyNumberForPlayer(p)||'', fg=p=>{const i=friendGroups.findIndex(g=>g.includes(p.id));return i>=0?`Friend Group ${i+1}`:'';};
-    const add=(name,rows,widths)=>{const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=widths.map(w=>({wch:w}));XLSX.utils.book_append_sheet(wb,ws,name);};
+    const add=(name,rows,widths)=>sheets.push({name,rows,widths});
     add('Public Teams',[['BH Hockey — '+seasonClassLabel],['Team','Jersey #','Player'],...all.map(p=>[tn(p),jn(p),p.name])],[22,12,28]);
     add('Admin Roster',[['BH Hockey — '+seasonClassLabel],['Player','Team','Jersey #','Assigned Size','Preferred Size','Position','Rating','Woman','Friend Group'],...all.map(p=>[p.name,tn(p),jn(p),p.assignedSize||'TBD',p.preferredSize,p.isGoalie?'Goalie':'Skater',p.isGoalie?'—':p.rating,p.isWoman?'Yes':'No',fg(p)])],[28,22,12,15,15,12,10,10,18]);
     const calc=arr=>{const sk=arr.filter(p=>!p.isGoalie),total=sk.reduce((x,p)=>x+p.rating,0),top=[...sk].sort((a,b)=>b.rating-a.rating).slice(0,Math.max(1,Math.ceil(sk.length*.25)));return{count:arr.length,total,avg:sk.length?(total/sk.length).toFixed(2):'—',g:arr.filter(p=>p.isGoalie).length,w:arr.filter(p=>p.isWoman).length,top:top.map(p=>`${p.name} (${p.rating})`).join(', ')};};
@@ -568,7 +568,9 @@ const HockeyTeamBalancer = () => {
     const pull=[...all].sort((x,y)=>tn(x).localeCompare(tn(y))||(Number(jn(x))||9999)-(Number(jn(y))||9999)||String(jn(x)).localeCompare(String(jn(y)),undefined,{numeric:true}));
     add('Jersey Pull List',[['Jersey Pull List — '+seasonClassLabel],['Team','Jersey #','Size','Player'],...pull.map(p=>[tn(p),jn(p),p.assignedSize||'TBD',p.name])],[22,12,12,28]);
     const safe=s=>(s||'').replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'');
-    XLSX.writeFile(wb,`BH_Roster_${safe(selectedSeason?.name)}_${safe(selectedClass?.name)}.xlsx`,{bookType:'xlsx',type:'binary'});
+    const {writeStyledRoster}=await import('./styledExcelExport.js');
+    await writeStyledRoster(sheets,`BH_Roster_${safe(selectedSeason?.name)}_${safe(selectedClass?.name)}.xlsx`,teamNames,teamColors);
+    } catch(error) { console.error('Excel export failed',error); alert(`Excel export failed: ${error.message}`); }
   };
 
   const groupColors = ['bg-blue-100 border-blue-300','bg-green-100 border-green-300','bg-purple-100 border-purple-300','bg-pink-100 border-pink-300','bg-yellow-100 border-yellow-300','bg-indigo-100 border-indigo-300','bg-red-100 border-red-300','bg-orange-100 border-orange-300'];
