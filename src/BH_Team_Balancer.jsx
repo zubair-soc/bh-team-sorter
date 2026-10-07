@@ -751,7 +751,11 @@ const HockeyTeamBalancer = () => {
           </button>
           {customJerseysOpen && <div className="mt-4 space-y-2">
             {customJerseys.map(j=><div key={j.id} className="grid grid-cols-1 sm:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_70px_90px_34px] gap-2 items-center">
-              <input value={j.playerName} onChange={e=>updateCustomJersey(j.id,'playerName',e.target.value)} placeholder="Player name (e.g. Semper)" className="soc-input px-3 py-2"/>
+              <select value={j.playerName||''} onChange={e=>updateCustomJersey(j.id,'playerName',e.target.value)} className="soc-input px-3 py-2">
+                <option value="">Select player</option>
+                {[...players].filter(p=>p.name?.trim()).sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}{p.team?' · '+teamNames[p.team]:''}</option>)}
+                {j.playerName && !players.some(p=>p.name===j.playerName) && <option value={j.playerName}>{j.playerName} (not in roster)</option>}
+              </select>
               <select value={j.team||'team1'} onChange={e=>updateCustomJersey(j.id,'team',e.target.value)} className="soc-input px-2 py-2"><option value="team1">{teamNames.team1}</option><option value="team2">{teamNames.team2}</option></select>
               <input value={j.number} onChange={e=>updateCustomJersey(j.id,'number',e.target.value)} placeholder="#" className="soc-input px-3 py-2"/>
               <select value={j.size} onChange={e=>updateCustomJersey(j.id,'size',e.target.value)} className="soc-input px-2 py-2">{sizes.map(s=><option key={s}>{s}</option>)}</select>
