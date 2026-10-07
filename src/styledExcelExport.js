@@ -27,13 +27,13 @@ export async function writeStyledRoster(sheets,filename,teamNames,teamColors){
       ws.mergeCells(1,1,1,maxCol);ws.mergeCells(2,1,2,maxCol);
       const title=ws.getRow(1),sub=ws.getRow(2),head=ws.getRow(3);
       title.height=30;sub.height=20;head.height=23;
-      title.eachCell({includeEmpty:true},c=>{fill(c,color);c.font={name:'Aptos Display',size:16,bold:true,color:{argb:'FF'+fg}};c.alignment={vertical:'middle'};});
+      title.eachCell({includeEmpty:true},c=>{fill(c,color);c.font={name:'Aptos Display',size:16,bold:true,color:{argb:'FF'+fg}};c.alignment={vertical:'middle',horizontal:'left',indent:1};});
       sub.eachCell({includeEmpty:true},c=>{fill(c,color);c.font={name:'Aptos',size:9,italic:true,color:{argb:'FF'+fg}};c.alignment={vertical:'middle'};});
-      head.eachCell({includeEmpty:true},c=>{fill(c,'E9EDF2');c.font={name:'Aptos',size:10,bold:true,color:{argb:'FF1F2937'}};c.border=border;c.alignment={vertical:'middle'};});
+      head.eachCell({includeEmpty:true},c=>{fill(c,'E9EDF2');c.font={name:'Aptos',size:10,bold:true,color:{argb:'FF1F2937'}};c.border=border;c.alignment={vertical:'middle',horizontal:'left',indent:1};});
       for(let r=4;r<=ws.rowCount;r++){
         const row=ws.getRow(r);row.height=20;
-        row.eachCell({includeEmpty:true},c=>{fill(c,r%2===0?'FFFFFF':'F7F8FA');c.font={name:'Aptos',size:10,color:{argb:'FF253247'}};c.border=border;c.alignment={vertical:'middle'};});
-        if(String(row.getCell(3).value)==='Goalie'){row.eachCell({includeEmpty:true},c=>{fill(c,'FFF4D6');c.font={name:'Aptos',size:10,bold:true,color:{argb:'FF59420B'}};});}
+        row.eachCell({includeEmpty:true},c=>{fill(c,r%2===0?'FFFFFF':'F7F8FA');c.font={name:'Aptos',size:10,color:{argb:'FF253247'}};c.border=border;c.alignment={vertical:'middle',horizontal:'left',indent:1};});
+        if(String(row.getCell(3).value)==='Goalie'){row.eachCell({includeEmpty:true},c=>{fill(c,'FFF4D6');c.font={name:'Aptos',size:10,bold:true,color:{argb:'FF59420B'}};c.alignment={vertical:'middle',horizontal:'left',indent:1};});}
       }
       ws.autoFilter={from:{row:3,column:1},to:{row:Math.max(3,ws.rowCount),column:maxCol}};
       ws.printTitlesRow='1:3';ws.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:.25,right:.25,top:.4,bottom:.4,header:.2,footer:.2}};
