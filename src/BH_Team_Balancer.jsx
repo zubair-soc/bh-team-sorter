@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 /* global XLSX */
 import React, { useState, useMemo, useEffect } from 'react';
 import { Users, Shirt, Star, AlertCircle, Shuffle, X, Upload, Download, FileSpreadsheet, FileText, Plus, ChevronDown, Archive, Trash2, LogOut } from 'lucide-react';
@@ -536,42 +537,49 @@ const HockeyTeamBalancer = () => {
   }, [players]);
 
   // ── Excel export ──────────────────────────────────────────────────────────
-  const downloadForExcel = () => {
-    if (typeof XLSX === 'undefined') { alert('Excel library not loaded yet. Please try again.'); return; }
+  const downloadForExcel = async () => {
     const t1=players.filter(p=>p.team==='team1'), t2=players.filter(p=>p.team==='team2'), all=[...t1,...t2];
     if(!all.length){alert('Balance teams first.');return;}
-    const wb=XLSX.utils.book_new(), tn=p=>p.team==='team1'?teamNames.team1:teamNames.team2;
-    const cleanHex=v=>String(v||'').replace('#','').toUpperCase();
-    const t1Hex=cleanHex(teamColors.team1)||'C8102E', t2Hex=cleanHex(teamColors.team2)||'D4AF37';
-    const DARK='111827', WHITE='FFFFFF', LIGHT='F8FAFC', BORDER='CBD5E1', MUTED='64748B';
-    const contrast=hex=>{const h=cleanHex(hex);if(h.length!==6)return WHITE;const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),bl=parseInt(h.slice(4,6),16);return (r*299+g*587+bl*114)/1000>155?'111827':WHITE;};
-    const border={top:{style:'thin',color:{rgb:BORDER}},bottom:{style:'thin',color:{rgb:BORDER}},left:{style:'thin',color:{rgb:BORDER}},right:{style:'thin',color:{rgb:BORDER}}};
-    const styleCell=(ws,addr,style)=>{if(ws[addr])ws[addr].s=style;};
-    const styleSheet=(ws,cols,titleEnd,headerRow=2)=>{
-      ws['!cols']=cols.map(w=>({wch:w})); ws['!freeze']={xSplit:0,ySplit:headerRow};
-      ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:titleEnd}}];
-      styleCell(ws,'A1',{fill:{patternType:'solid',fgColor:{rgb:DARK}},font:{name:'Arial',sz:15,bold:true,color:{rgb:WHITE}},alignment:{vertical:'center'}});
-      ws['!rows']=ws['!rows']||[]; ws['!rows'][0]={hpt:26}; ws['!rows'][headerRow-1]={hpt:22};
-      const range=XLSX.utils.decode_range(ws['!ref']);
-      for(let col=0;col<=range.e.c;col++){const a=XLSX.utils.encode_cell({r:headerRow-1,c:col});styleCell(ws,a,{fill:{patternType:'solid',fgColor:{rgb:'E5E7EB'}},font:{name:'Arial',bold:true,color:{rgb:DARK}},alignment:{horizontal:'center',vertical:'center'},border});}
-      for(let row=headerRow;row<=range.e.r;row++)for(let col=0;col<=range.e.c;col++){const a=XLSX.utils.encode_cell({r:row,c:col});styleCell(ws,a,{fill:{patternType:'solid',fgColor:{rgb:row%2?WHITE:LIGHT}},font:{name:'Arial',sz:10,color:{rgb:DARK}},alignment:{vertical:'center',horizontal:col===0||col===range.e.c?'left':'center'},border});}
+    const wb=new ExcelJS.Workbook(); wb.creator='Shinny of Champions'; wb.created=new Date();
+    const tn=p=>p.team==='team1'?teamNames.team1:teamNames.team2, jn=p=>jerseyNumberForPlayer(p)||'';
+    const fg=p=>{const i=friendGroups.findIndex(g=>g.includes(p.id));return i>=0?`Friend Group ${i+1}`:'';};
+    const hex=v=>String(v||'').replace('#','').toUpperCase(), t1Hex=hex(teamColors.team1)||'C8102E', t2Hex=hex(teamColors.team2)||'D4AF37';
+    const contrast=h=>{h=hex(h);const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);return (r*299+g*587+b*114)/1000>155?'111827':'FFFFFF';};
+    const teamHex=name=>name===teamNames.team1?t1Hex:t2Hex;
+    const border={top:{style:'thin',color:{argb:'FFCBD5E1'}},left:{style:'thin',color:{argb:'FFCBD5E1'}},bottom:{style:'thin',color:{argb:'FFCBD5E1'}},right:{style:'thin',color:{argb:'FFCBD5E1'}}};
+    const setup=(name,title,headers,widths)=>{
+      const ws=wb.addWorksheet(name,{views:[{state:'frozen',ySplit:2}]});
+      ws.addRow([title]); ws.mergeCells(1,1,1,headers.length); ws.getRow(1).height=28;
+      const titleCell=ws.getCell(1,1); titleCell.font={name:'Arial',size:15,bold:true,color:{argb:'FFFFFFFF'}}; titleCell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF111827'}}; titleCell.alignment={vertical:'middle',horizontal:'left'};
+      ws.addRow(headers); ws.getRow(2).height=23; ws.getRow(2).eachCell(cell=>{cell.font={name:'Arial',bold:true,color:{argb:'FF111827'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFE5E7EB'}};cell.alignment={vertical:'middle',horizontal:'center'};cell.border=border;});
+      widths.forEach((w,i)=>ws.getColumn(i+1).width=w); ws.autoFilter={from:{row:2,column:1},to:{row:2,column:headers.length}}; return ws;
     };
-    const colorTeamCells=(ws,teamCol,startRow,endRow)=>{
-      for(let r=startRow;r<=endRow;r++){const addr=XLSX.utils.encode_cell({r:r-1,c:teamCol});const cell=ws[addr];if(!cell)continue;const hex=cell.v===teamNames.team1?t1Hex:t2Hex;cell.s={...(cell.s||{}),fill:{patternType:'solid',fgColor:{rgb:hex}},font:{name:'Arial',bold:true,color:{rgb:contrast(hex)}},alignment:{horizontal:'center',vertical:'center'},border};}
+    const finishRows=(ws,start=3)=>{
+      for(let r=start;r<=ws.rowCount;r++){ws.getRow(r).height=20;ws.getRow(r).eachCell({includeEmpty:true},cell=>{cell.font={name:'Arial',size:10,color:{argb:'FF111827'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:r%2?'FFFFFFFF':'FFF8FAFC'}};cell.border=border;cell.alignment={vertical:'middle'};});}
     };
-    const jn=p=>jerseyNumberForPlayer(p)||'', fg=p=>{const i=friendGroups.findIndex(g=>g.includes(p.id));return i>=0?`Friend Group ${i+1}`:'';};
-    const add=(name,rows,widths)=>{const ws=XLSX.utils.aoa_to_sheet(rows);XLSX.utils.book_append_sheet(wb,ws,name);styleSheet(ws,widths,rows[1].length-1,2);return ws;};
-    const pub=add('Public Teams',[['BH Hockey — '+seasonClassLabel],['Team','Jersey #','Player'],...all.map(p=>[tn(p),jn(p),p.name])],[22,12,28]); colorTeamCells(pub,0,3,all.length+2);
-    const admin=add('Admin Roster',[['BH Hockey — '+seasonClassLabel],['Player','Team','Jersey #','Assigned Size','Preferred Size','Position','Rating','Woman','Friend Group'],...all.map(p=>[p.name,tn(p),jn(p),p.assignedSize||'TBD',p.preferredSize,p.isGoalie?'Goalie':'Skater',p.isGoalie?'—':p.rating,p.isWoman?'Yes':'No',fg(p)])],[28,22,12,15,15,12,10,10,18]); colorTeamCells(admin,1,3,all.length+2);
+    const colorTeam=(cell,name)=>{const h=teamHex(name);cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+h}};cell.font={name:'Arial',size:10,bold:true,color:{argb:'FF'+contrast(h)}};cell.alignment={vertical:'middle',horizontal:'center'};cell.border=border;};
+
+    const pub=setup('Public Teams','BH Hockey — '+seasonClassLabel,['Team','Jersey #','Player'],[22,12,30]);
+    all.forEach(p=>pub.addRow([tn(p),jn(p),p.name])); finishRows(pub); for(let r=3;r<=pub.rowCount;r++)colorTeam(pub.getCell(r,1),pub.getCell(r,1).value);
+    pub.pageSetup={orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:.3,right:.3,top:.5,bottom:.5,header:.2,footer:.2}};
+
+    const admin=setup('Admin Roster','BH Hockey — '+seasonClassLabel,['Player','Team','Jersey #','Assigned Size','Preferred Size','Position','Rating','Woman','Friend Group'],[28,22,12,15,15,12,10,10,18]);
+    all.forEach(p=>admin.addRow([p.name,tn(p),jn(p),p.assignedSize||'TBD',p.preferredSize,p.isGoalie?'Goalie':'Skater',p.isGoalie?'—':p.rating,p.isWoman?'Yes':'No',fg(p)])); finishRows(admin); for(let r=3;r<=admin.rowCount;r++)colorTeam(admin.getCell(r,2),admin.getCell(r,2).value);
+
     const calc=arr=>{const sk=arr.filter(p=>!p.isGoalie),total=sk.reduce((x,p)=>x+p.rating,0),top=[...sk].sort((a,b)=>b.rating-a.rating).slice(0,Math.max(1,Math.ceil(sk.length*.25)));return{count:arr.length,total,avg:sk.length?(total/sk.length).toFixed(2):'—',g:arr.filter(p=>p.isGoalie).length,w:arr.filter(p=>p.isWoman).length,top:top.map(p=>`${p.name} (${p.rating})`).join(', ')};};
-    const a=calc(t1),b=calc(t2),exceptions=all.flatMap(p=>{const x=[];if(!p.assignedSize||p.assignedSize==='TBD')x.push([tn(p),p.name,'No jersey available']);else if(p.assignedSize!==p.preferredSize)x.push([tn(p),p.name,`Sized up: ${p.preferredSize} → ${p.assignedSize}`]);if(p.assignedSize&&p.assignedSize!=='TBD'&&!jn(p))x.push([tn(p),p.name,`No jersey number assigned (${p.assignedSize})`]);return x;});
-    const summary=add('Team Summary',[['Team Summary — '+seasonClassLabel],['Metric',teamNames.team1,teamNames.team2],['Players',a.count,b.count],['Total skater rating',a.total,b.total],['Average skater rating',a.avg,b.avg],['Goalies',a.g,b.g],['Women',a.w,b.w],['Top 25% skaters',a.top,b.top],[],['Jersey fit','',''],['Preferred size',t1.filter(p=>p.assignedSize===p.preferredSize).length,t2.filter(p=>p.assignedSize===p.preferredSize).length],['Sized up',t1.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length,t2.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length],['No jersey',t1.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length,t2.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length],[],['Exceptions','Player','Issue'],...(exceptions.length?exceptions:[['None','','']])],[24,42,42]);
-    ['B2','B3','B4','B5','B6','B7','B8'].forEach(a=>styleCell(summary,a,{fill:{patternType:'solid',fgColor:{rgb:t1Hex}},font:{name:'Arial',bold:true,color:{rgb:contrast(t1Hex)}},alignment:{horizontal:'center',vertical:'center'},border}));
-    ['C2','C3','C4','C5','C6','C7','C8'].forEach(a=>styleCell(summary,a,{fill:{patternType:'solid',fgColor:{rgb:t2Hex}},font:{name:'Arial',bold:true,color:{rgb:contrast(t2Hex)}},alignment:{horizontal:'center',vertical:'center'},border}));
+    const a=calc(t1),b=calc(t2);
+    const summary=setup('Team Summary','Team Summary — '+seasonClassLabel,['Metric',teamNames.team1,teamNames.team2],[24,42,42]);
+    [['Players',a.count,b.count],['Total skater rating',a.total,b.total],['Average skater rating',a.avg,b.avg],['Goalies',a.g,b.g],['Women',a.w,b.w],['Top 25% skaters',a.top,b.top],['Preferred jersey size',t1.filter(p=>p.assignedSize===p.preferredSize).length,t2.filter(p=>p.assignedSize===p.preferredSize).length],['Sized up',t1.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length,t2.filter(p=>p.assignedSize&&p.assignedSize!=='TBD'&&p.assignedSize!==p.preferredSize).length],['No jersey',t1.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length,t2.filter(p=>!p.assignedSize||p.assignedSize==='TBD').length]].forEach(x=>summary.addRow(x));
+    finishRows(summary); colorTeam(summary.getCell(2,2),teamNames.team1); colorTeam(summary.getCell(2,3),teamNames.team2);
+    const exceptions=all.flatMap(p=>{const x=[];if(!p.assignedSize||p.assignedSize==='TBD')x.push([tn(p),p.name,'No jersey available']);else if(p.assignedSize!==p.preferredSize)x.push([tn(p),p.name,`Sized up: ${p.preferredSize} → ${p.assignedSize}`]);if(p.assignedSize&&p.assignedSize!=='TBD'&&!jn(p))x.push([tn(p),p.name,`No jersey number assigned (${p.assignedSize})`]);return x;});
+    summary.addRow([]); const ex=summary.addRow(['Exceptions','Player','Issue']); ex.eachCell(cell=>{cell.font={bold:true,color:{argb:'FFFFFFFF'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFC8102E'}};cell.border=border;}); (exceptions.length?exceptions:[['None','','']]).forEach(x=>summary.addRow(x)); finishRows(summary,ex.number+1);
+
     const pull=[...all].sort((x,y)=>tn(x).localeCompare(tn(y))||(Number(jn(x))||9999)-(Number(jn(y))||9999)||String(jn(x)).localeCompare(String(jn(y)),undefined,{numeric:true}));
-    const pullWs=add('Jersey Pull List',[['Jersey Pull List — '+seasonClassLabel],['Team','Jersey #','Size','Player'],...pull.map(p=>[tn(p),jn(p),p.assignedSize||'TBD',p.name])],[22,12,12,28]); colorTeamCells(pullWs,0,3,pull.length+2);
-    const safe=s=>(s||'').replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'');
-    XLSX.writeFile(wb,`BH_Roster_${safe(selectedSeason?.name)}_${safe(selectedClass?.name)}.xlsx`,{bookType:'xlsx',type:'binary'});
+    const pw=setup('Jersey Pull List','Jersey Pull List — '+seasonClassLabel,['Team','Jersey #','Size','Player'],[22,12,12,30]); pull.forEach(p=>pw.addRow([tn(p),jn(p),p.assignedSize||'TBD',p.name])); finishRows(pw); for(let r=3;r<=pw.rowCount;r++)colorTeam(pw.getCell(r,1),pw.getCell(r,1).value);
+
+    const safe=s=>String(s||'').replace(/[^a-z0-9_-]+/gi,'_').replace(/^_+|_+$/g,'');
+    const buffer=await wb.xlsx.writeBuffer(); const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`BH_Roster_${safe(selectedSeason?.name)}_${safe(selectedClass?.name)}.xlsx`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
 
   const groupColors = ['bg-blue-100 border-blue-300','bg-green-100 border-green-300','bg-purple-100 border-purple-300','bg-pink-100 border-pink-300','bg-yellow-100 border-yellow-300','bg-indigo-100 border-indigo-300','bg-red-100 border-red-300','bg-orange-100 border-orange-300'];
