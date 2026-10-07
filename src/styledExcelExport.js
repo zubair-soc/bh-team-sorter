@@ -49,7 +49,7 @@ export async function writeStyledRoster(sheets,filename,teamNames,teamColors){
           const idx=team===teamNames.team1?0:team===teamNames.team2?1:-1;
           if(idx>=0){
             const color=rgb(idx===0?teamColors.team1:teamColors.team2),fg=textColor(color);
-            row.eachCell({includeEmpty:true},cell=>{fill(cell,color);cell.font={name:'Aptos',size:10,bold:true,color:{argb:'FF'+fg}};cell.border=border;});
+            const cell=row.getCell(1);fill(cell,color);cell.font={name:'Aptos',size:10,bold:true,color:{argb:'FF'+fg}};cell.border=border;
           }
         }
       }
