@@ -57,6 +57,7 @@ const HockeyTeamBalancer = () => {
   const [hasAccess, setHasAccess] = useState(null);
   const [friendGroupsOpen, setFriendGroupsOpen] = useState(false);
   const [jerseyNumbersOpen, setJerseyNumbersOpen] = useState({ team1:false, team2:false });
+  const [customJerseysOpen, setCustomJerseysOpen] = useState(false);
 
   const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
   const selectedClass = selectedSeason?.classes?.find(x => x.id === selectedClassId);
@@ -68,11 +69,12 @@ const HockeyTeamBalancer = () => {
     setClassStore(prev => ({ ...prev, [selectedClassId]: updater(prev[selectedClassId] ?? defaultClassData()) }));
   };
 
-  const { teamNames, inventory, sockInventory, jerseyNumbers = defaultClassData().jerseyNumbers, players, friendGroups, teamColors = defaultClassData().teamColors } = currentData;
+  const { teamNames, inventory, sockInventory, jerseyNumbers = defaultClassData().jerseyNumbers, customJerseys = [], players, friendGroups, teamColors = defaultClassData().teamColors } = currentData;
   const setTeamNames = val => updateCurrent(d => ({ ...d, teamNames: typeof val === 'function' ? val(d.teamNames) : val }));
   const setInventory = val => updateCurrent(d => ({ ...d, inventory: typeof val === 'function' ? val(d.inventory) : val }));
   const setSockInventory = val => updateCurrent(d => ({ ...d, sockInventory: typeof val === 'function' ? val(d.sockInventory) : val }));
   const setJerseyNumbers = val => updateCurrent(d => ({ ...d, jerseyNumbers: typeof val === 'function' ? val(d.jerseyNumbers || defaultClassData().jerseyNumbers) : val }));
+  const setCustomJerseys = val => updateCurrent(d => ({ ...d, customJerseys: typeof val === 'function' ? val(d.customJerseys || []) : val }));
   const setPlayers = val => updateCurrent(d => ({ ...d, players: typeof val === 'function' ? val(d.players) : val }));
   const setFriendGroups = val => updateCurrent(d => ({ ...d, friendGroups: typeof val === 'function' ? val(d.friendGroups) : val }));
   const setTeamColors = val => updateCurrent(d => ({ ...d, teamColors: typeof val === 'function' ? val(d.teamColors || defaultClassData().teamColors) : val }));
@@ -139,6 +141,7 @@ const HockeyTeamBalancer = () => {
       inventory: klass.inventory?.jerseys || defaultClassData().inventory,
       sockInventory: klass.inventory?.socks || defaultClassData().sockInventory,
       jerseyNumbers: klass.inventory?.jersey_numbers || defaultClassData().jerseyNumbers,
+      customJerseys: klass.inventory?.custom_jerseys || [],
       players: mappedPlayers,
       friendGroups: Array.from(groupMap.values()).filter(g => g.length >= 2),
     }}));
@@ -209,7 +212,7 @@ const HockeyTeamBalancer = () => {
       team2_name: defaults.teamNames.team2,
       team1_color: defaults.teamColors.team1,
       team2_color: defaults.teamColors.team2,
-      inventory: { jerseys: defaults.inventory, socks: defaults.sockInventory, jersey_numbers: defaults.jerseyNumbers },
+      inventory: { jerseys: defaults.inventory, socks: defaults.sockInventory, jersey_numbers: defaults.jerseyNumbers, custom_jerseys: [] },
       created_by: session.user.id
     }).select().single();
     if (error) return alert(error.message);
@@ -260,7 +263,7 @@ const HockeyTeamBalancer = () => {
           team2_name: teamNames.team2,
           team1_color: teamColors.team1,
           team2_color: teamColors.team2,
-          inventory: { jerseys: inventory, socks: sockInventory, jersey_numbers: jerseyNumbers },
+          inventory: { jerseys: inventory, socks: sockInventory, jersey_numbers: jerseyNumbers, custom_jerseys: customJerseys },
           updated_at: new Date().toISOString()
         }).eq('id', selectedClassId),
         supabase.rpc('bh_save_class_roster', { p_class_id: selectedClassId, p_players: rosterPayload })
@@ -269,7 +272,7 @@ const HockeyTeamBalancer = () => {
       if (classError || rosterError) console.error(classError || rosterError);
     }, 650);
     return () => clearTimeout(timer);
-  }, [session?.user?.id, selectedClassId, rosterLoaded, teamNames, teamColors, inventory, sockInventory, jerseyNumbers, players, friendGroups]);
+  }, [session?.user?.id, selectedClassId, rosterLoaded, teamNames, teamColors, inventory, sockInventory, jerseyNumbers, customJerseys, players, friendGroups]);
 
   // ── CSV Upload (supports [Config] + [Players] sections) ───────────────────
   const handleFileUpload = (event) => {
@@ -432,11 +435,25 @@ const HockeyTeamBalancer = () => {
     return [...new Set(result)];
   };
   const jerseyNumberForPlayer = (player) => {
+    if (player.customJerseyId) return customJerseys.find(j=>j.id===player.customJerseyId)?.number || '';
     if (!player.team || !player.assignedSize || player.assignedSize === 'TBD') return '';
     const list = parseJerseyNumbers(jerseyNumbers?.[player.team]?.[player.assignedSize]);
     const sameSize = players.filter(p => p.team===player.team && p.assignedSize===player.assignedSize);
     const idx = sameSize.findIndex(p => p.id===player.id);
     return idx >= 0 ? (list[idx] || '') : '';
+  };
+
+  const addCustomJersey = () => setCustomJerseys(prev => [...prev, { id:crypto.randomUUID(), playerName:'', number:'', size:'L' }]);
+  const updateCustomJersey = (id,field,value) => setCustomJerseys(prev => prev.map(j=>j.id===id?{...j,[field]:value}:j));
+  const removeCustomJersey = id => { setCustomJerseys(prev=>prev.filter(j=>j.id!==id)); setPlayers(prev=>prev.map(p=>p.customJerseyId===id?{...p,customJerseyId:undefined}:p)); };
+  const customForPlayer = player => customJerseys.filter(j=>j.playerName.trim() && j.playerName.trim().toLowerCase()===String(player.name||'').trim().toLowerCase());
+  const setPlayerJerseyChoice = (player, value) => {
+    if (value.startsWith('custom:')) {
+      const id=value.slice(7), jersey=customJerseys.find(j=>j.id===id);
+      if(jersey) setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,customJerseyId:id,assignedSize:jersey.size}:p));
+    } else {
+      setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,customJerseyId:undefined,assignedSize:value}:p));
+    }
   };
 
   // ── Friend Groups ─────────────────────────────────────────────────────────
@@ -510,7 +527,7 @@ const HockeyTeamBalancer = () => {
 
   // ── Manual jersey override ──────────────────────────────────────────────────
   const setManualJersey = (playerId, size) => {
-    setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, assignedSize: size } : p));
+    setPlayers(prev => prev.map(p => p.id === playerId ? { ...p, customJerseyId: undefined, assignedSize: size } : p));
   };
 
 
@@ -701,6 +718,24 @@ const HockeyTeamBalancer = () => {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* ── Custom Jerseys ── */}
+        <div className="soc-card p-5 md:p-6 mb-5">
+          <button type="button" onClick={()=>setCustomJerseysOpen(v=>!v)} className="w-full flex items-center gap-3 text-left">
+            <div className="flex-1"><h2 className="soc-card-title">Custom Jerseys</h2><p className="text-sm text-slate-500 mt-1">{customJerseys.length} reserved · name, number and actual size</p></div>
+            <ChevronDown size={20} className={`text-slate-400 transition-transform ${customJerseysOpen?'rotate-180':''}`}/>
+          </button>
+          {customJerseysOpen && <div className="mt-4 space-y-2">
+            {customJerseys.map(j=><div key={j.id} className="grid grid-cols-[1fr_80px_90px_34px] gap-2 items-center">
+              <input value={j.playerName} onChange={e=>updateCustomJersey(j.id,'playerName',e.target.value)} placeholder="Player name (e.g. Semper)" className="soc-input px-3 py-2"/>
+              <input value={j.number} onChange={e=>updateCustomJersey(j.id,'number',e.target.value)} placeholder="#" className="soc-input px-3 py-2"/>
+              <select value={j.size} onChange={e=>updateCustomJersey(j.id,'size',e.target.value)} className="soc-input px-2 py-2">{sizes.map(s=><option key={s}>{s}</option>)}</select>
+              <button onClick={()=>removeCustomJersey(j.id)} className="text-red-600"><X size={18}/></button>
+            </div>)}
+            <button onClick={addCustomJersey} className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-lg font-bold">+ Add Custom Jersey</button>
+            <p className="text-xs text-slate-500">Multiple jerseys can be reserved for the same player. They are not available to other players.</p>
+          </div>}
         </div>
 
         {/* ── CSV Upload ── */}
@@ -921,13 +956,14 @@ const HockeyTeamBalancer = () => {
                               </div>
                               <div className="flex items-center gap-1.5">
                                 <select
-                                  value={assigned}
+                                  value={player.customJerseyId?`custom:${player.customJerseyId}`:assigned}
                                   onClick={e=>e.stopPropagation()}
-                                  onChange={e=>{ e.stopPropagation(); setManualJersey(player.id, e.target.value); }}
+                                  onChange={e=>{ e.stopPropagation(); setPlayerJerseyChoice(player, e.target.value); }}
                                   className={`text-sm font-bold px-1.5 py-1 rounded border-0 cursor-pointer ${noSize?'bg-red-100 text-red-600':sizedUp?'bg-yellow-100 text-yellow-700':'bg-green-100 text-green-700'}`}
-                                  title="Manually set jersey size"
+                                  title="Choose assigned or reserved custom jersey"
                                 >
                                   <option value="TBD">TBD</option>
+                                  {customForPlayer(player).map(j=><option key={j.id} value={`custom:${j.id}`}>#{j.number} · {j.size} — Custom</option>)}
                                   {jerseyOptions.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                                 <button
