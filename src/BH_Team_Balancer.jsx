@@ -129,7 +129,8 @@ const HockeyTeamBalancer = () => {
         isGoalie: p.goalie,
         isWoman: p.woman,
         team: a?.team === 1 ? 'team1' : a?.team === 2 ? 'team2' : null,
-        assignedSize: a?.assigned_size || undefined,
+        assignedSize: (klass.inventory?.custom_jersey_assignments?.[p.id] && (klass.inventory?.custom_jerseys||[]).find(j=>j.id===klass.inventory.custom_jersey_assignments[p.id] && (!j.team || j.team===(a?.team===1?'team1':'team2')))?.size) || a?.assigned_size || undefined,
+        customJerseyId: (klass.inventory?.custom_jerseys||[]).some(j=>j.id===klass.inventory?.custom_jersey_assignments?.[p.id] && (!j.team || j.team===(a?.team===1?'team1':'team2')))?klass.inventory.custom_jersey_assignments[p.id]:undefined,
         assignedSockSize: a?.assigned_sock_size || undefined,
       };
     });
@@ -263,7 +264,7 @@ const HockeyTeamBalancer = () => {
           team2_name: teamNames.team2,
           team1_color: teamColors.team1,
           team2_color: teamColors.team2,
-          inventory: { jerseys: inventory, socks: sockInventory, jersey_numbers: jerseyNumbers, custom_jerseys: customJerseys },
+          inventory: { jerseys: inventory, socks: sockInventory, jersey_numbers: jerseyNumbers, custom_jerseys: customJerseys, custom_jersey_assignments: Object.fromEntries(players.filter(p=>p.customJerseyId && customJerseys.some(j=>j.id===p.customJerseyId)).map(p=>[p.id,p.customJerseyId])) },
           updated_at: new Date().toISOString()
         }).eq('id', selectedClassId),
         supabase.rpc('bh_save_class_roster', { p_class_id: selectedClassId, p_players: rosterPayload })
@@ -466,10 +467,8 @@ const HockeyTeamBalancer = () => {
     try {
       const validPlayers = players.filter(p => p.name?.trim());
       const { team1, team2 } = buildBalancedTeams(validPlayers, friendGroups, inventory);
-      const withJerseys1 = allocateJerseys(team1.map(p=>({...p,team:'team1'})), inventory.team1);
-      const withJerseys2 = allocateJerseys(team2.map(p=>({...p,team:'team2'})), inventory.team2);
-      const withSocks1 = allocateSocks(withJerseys1, sockInventory.team1);
-      const withSocks2 = allocateSocks(withJerseys2, sockInventory.team2);
+      const withSocks1 = reallocateTeamGear(team1.map(p=>({...p,team:'team1'})), 'team1');
+      const withSocks2 = reallocateTeamGear(team2.map(p=>({...p,team:'team2'})), 'team2');
       const assigned = new Map([...withSocks1,...withSocks2].map(p=>[p.id,p]));
       setPlayers(prev => prev.map(p => assigned.has(p.id) ? { ...p, ...assigned.get(p.id) } : p));
       setSelectedForSwap(null);
@@ -497,7 +496,9 @@ const HockeyTeamBalancer = () => {
   }), [inventory, jerseyUsage, sizes]);
 
   const reallocateTeamGear = (teamPlayers, team) => {
-    const jerseys = allocateJerseys(teamPlayers, inventory[team]);
+    const custom=teamPlayers.filter(p=>p.customJerseyId && customJerseys.some(j=>j.id===p.customJerseyId && (!j.team || j.team===team)));
+    const regular=teamPlayers.filter(p=>!custom.includes(p));
+    const jerseys=[...allocateJerseys(regular, inventory[team]),...custom.map(p=>({...p,assignedSize:customJerseys.find(j=>j.id===p.customJerseyId).size}))];
     return allocateSocks(jerseys, sockInventory[team]);
   };
 
