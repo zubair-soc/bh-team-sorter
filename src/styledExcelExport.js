@@ -1,71 +1,52 @@
-// Loaded only when Export Excel is clicked; does not affect roster boot or persistence.
+// Loaded only when Export Excel is clicked; isolated from roster boot/persistence.
 let loader;
-function getExcelJS() {
-  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
-  if (!loader) loader = new Promise((resolve,reject)=>{
-    const script=document.createElement('script');
-    script.src='https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
-    script.onload=()=>window.ExcelJS?resolve(window.ExcelJS):reject(new Error('ExcelJS unavailable'));
-    script.onerror=()=>reject(new Error('Unable to load Excel formatting library'));
-    document.head.appendChild(script);
-  }).catch(err=>{loader=null;throw err;});
+function getExcelJS(){
+  if(window.ExcelJS)return Promise.resolve(window.ExcelJS);
+  if(!loader)loader=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    s.onload=()=>window.ExcelJS?resolve(window.ExcelJS):reject(new Error('ExcelJS unavailable'));
+    s.onerror=()=>reject(new Error('Unable to load Excel formatting library'));document.head.appendChild(s);
+  }).catch(e=>{loader=null;throw e;});
   return loader;
 }
-const rgb = value => (value||'#111827').replace('#','').toUpperCase();
-const contrast = hex => {
-  const c=rgb(hex); const r=parseInt(c.slice(0,2),16),g=parseInt(c.slice(2,4),16),b=parseInt(c.slice(4,6),16);
-  return .299*r+.587*g+.114*b>160?'172033':'FFFFFF';
-};
-export async function writeStyledRoster(sheets, filename, teamNames, teamColors) {
-  const ExcelJS=await getExcelJS();
-  const book=new ExcelJS.Workbook();
-  book.creator='Shinny of Champions';
-  book.created=new Date();
-  const teams=[teamNames.team1,teamNames.team2];
-  const colors=[rgb(teamColors.team1),rgb(teamColors.team2)];
-  for(const {name,rows,widths} of sheets) {
-    const ws=book.addWorksheet(name,{views:[{state:'frozen',ySplit:2}]});
-    ws.columns=widths.map(w=>({width:w+3}));
-    rows.forEach((row,i)=>{
-      const r=ws.addRow(row);
-      r.height=i===0?34:i===1?29:23;
-      r.alignment={vertical:'middle',wrapText:i>1};
-      r.eachCell({includeEmpty:true},(cell,col)=>{
-        cell.font={name:'Aptos',size:i===0?16:i===1?11:10,bold:i<2,color:{argb:i<2?'FFFFFFFF':'FF243247'}};
-        cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:i===0?'FF151A23':i===1?'FF9F1D25':i%2===0?'FFF4F6F9':'FFFFFFFF'}};
-        cell.border={bottom:{style:'hair',color:{argb:'FFE2E6EC'}}};
-        cell.alignment={vertical:'middle',wrapText:true};
-        if(i>1&&col===1&&name!=='Team Summary') {
-          const teamIndex=teams.indexOf(String(cell.value||''));
-          if(teamIndex>=0){
-            cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+colors[teamIndex]}};
-            cell.font={name:'Aptos',size:10,bold:true,color:{argb:'FF'+contrast(colors[teamIndex])}};
-          }
-        }
-      });
-    });
-    if(rows[0]?.length===1&&widths.length>1) ws.mergeCells(1,1,1,widths.length);
-    ws.getRow(1).font={name:'Aptos Display',size:16,bold:true,color:{argb:'FFFFFFFF'}};
-    ws.pageSetup={paperSize:9,orientation:widths.length>5?'landscape':'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0};
+const rgb=v=>(v||'#111827').replace('#','').toUpperCase();
+const textColor=hex=>{const c=rgb(hex),r=parseInt(c.slice(0,2),16),g=parseInt(c.slice(2,4),16),b=parseInt(c.slice(4,6),16);return .299*r+.587*g+.114*b>165?'172033':'FFFFFF';};
+const fill=(cell,color)=>cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+color}};
+const border={bottom:{style:'hair',color:{argb:'FFD9DEE6'}}};
+export async function writeStyledRoster(sheets,filename,teamNames,teamColors){
+  const ExcelJS=await getExcelJS(),book=new ExcelJS.Workbook();book.creator='Shinny of Champions';
+  for(const sheet of sheets){
+    const ws=book.addWorksheet(sheet.name,{views:[{state:'frozen',ySplit:sheet.kind==='team'?3:2}]});
+    ws.columns=sheet.widths.map(width=>({width}));
+    sheet.rows.forEach(row=>ws.addRow(row));
+    ws.properties.defaultRowHeight=19;
+    const maxCol=sheet.widths.length;
+
+    if(sheet.kind==='team'){
+      const color=rgb(teamColors[sheet.team]),fg=textColor(color);
+      ws.mergeCells(1,1,1,maxCol);ws.mergeCells(2,1,2,maxCol);
+      const title=ws.getRow(1),sub=ws.getRow(2),head=ws.getRow(3);
+      title.height=30;sub.height=20;head.height=23;
+      title.eachCell({includeEmpty:true},c=>{fill(c,color);c.font={name:'Aptos Display',size:16,bold:true,color:{argb:'FF'+fg}};c.alignment={vertical:'middle'};});
+      sub.eachCell({includeEmpty:true},c=>{fill(c,color);c.font={name:'Aptos',size:9,italic:true,color:{argb:'FF'+fg}};c.alignment={vertical:'middle'};});
+      head.eachCell({includeEmpty:true},c=>{fill(c,'E9EDF2');c.font={name:'Aptos',size:10,bold:true,color:{argb:'FF1F2937'}};c.border=border;c.alignment={vertical:'middle'};});
+      for(let r=4;r<=ws.rowCount;r++){
+        const row=ws.getRow(r);row.height=20;
+        row.eachCell({includeEmpty:true},c=>{fill(c,r%2===0?'FFFFFF':'F7F8FA');c.font={name:'Aptos',size:10,color:{argb:'FF253247'}};c.border=border;c.alignment={vertical:'middle'};});
+        if(String(row.getCell(3).value)==='Goalie'){row.eachCell({includeEmpty:true},c=>{fill(c,'FFF4D6');c.font={name:'Aptos',size:10,bold:true,color:{argb:'FF59420B'}};});}
+      }
+      ws.autoFilter={from:{row:3,column:1},to:{row:Math.max(3,ws.rowCount),column:maxCol}};
+      ws.printTitlesRow='1:3';ws.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:.25,right:.25,top:.4,bottom:.4,header:.2,footer:.2}};
+    } else {
+      ws.mergeCells(1,1,1,maxCol);const title=ws.getRow(1);title.height=28;
+      title.eachCell({includeEmpty:true},c=>{fill(c,'171B24');c.font={name:'Aptos Display',size:14,bold:true,color:{argb:'FFFFFFFF'}};c.alignment={vertical:'middle'};});
+      const head=ws.getRow(2);head.height=22;head.eachCell({includeEmpty:true},c=>{fill(c,'E9EDF2');c.font={name:'Aptos',size:10,bold:true,color:{argb:'FF1F2937'}};c.border=border;});
+      for(let r=3;r<=ws.rowCount;r++)ws.getRow(r).eachCell({includeEmpty:true},c=>{fill(c,r%2?'F7F8FA':'FFFFFF');c.font={name:'Aptos',size:10,color:{argb:'FF253247'}};c.border=border;});
+      if(sheet.kind==='public')ws.autoFilter={from:{row:2,column:1},to:{row:Math.max(2,ws.rowCount),column:maxCol}};
+      ws.pageSetup={paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0};
+    }
     ws.headerFooter.oddFooter='Shinny of Champions  •  Page &P of &N';
-    ws.properties.defaultRowHeight=23;
-    if(name==='Public Teams') {
-      ws.printTitlesRow='1:2';
-      ws.autoFilter={from:{row:2,column:1},to:{row:Math.max(2,rows.length),column:widths.length}};
-    } else if(name==='Admin Roster'||name==='Jersey Pull List') {
-      ws.autoFilter={from:{row:2,column:1},to:{row:Math.max(2,rows.length),column:widths.length}};
-    }
-    if(name==='Team Summary') {
-      [3,4].forEach(col=>{
-        if(col<=widths.length) ws.getColumn(col).alignment={vertical:'middle',wrapText:true};
-      });
-      [3,4,5,6,7,8].forEach(i=>{ if(ws.getRow(i)) ws.getRow(i).height=28; });
-      if(ws.getRow(9)) ws.getRow(9).height=48;
-    }
   }
-  const buffer=await book.xlsx.writeBuffer();
-  const blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  const url=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  const buffer=await book.xlsx.writeBuffer(),blob=new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
