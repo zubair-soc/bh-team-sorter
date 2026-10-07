@@ -746,14 +746,14 @@ const HockeyTeamBalancer = () => {
         {/* ── Custom Jerseys ── */}
         <div className="soc-card p-5 md:p-6 mb-5">
           <button type="button" onClick={()=>setCustomJerseysOpen(v=>!v)} className="w-full flex items-center gap-3 text-left">
-            <div className="flex-1"><h2 className="soc-card-title">Custom Jerseys</h2><p className="text-sm text-slate-500 mt-1">{customJerseys.length} reserved · player, team, number and size</p></div>
+            <div className="flex-1"><h2 className="soc-card-title">Custom Jerseys</h2><p className="text-sm text-slate-500 mt-1">{customJerseys.length} reserved · set up jerseys before importing players; assign recipients later</p></div>
             <ChevronDown size={20} className={`text-slate-400 transition-transform ${customJerseysOpen?'rotate-180':''}`}/>
           </button>
           {customJerseysOpen && <div className="mt-4 space-y-2">
             {customJerseys.map(j=><div key={j.id} className="grid grid-cols-1 sm:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_70px_90px_34px] gap-2 items-center">
               <select value={j.playerName||''} onChange={e=>updateCustomJersey(j.id,'playerName',e.target.value)} className="soc-input px-3 py-2">
-                <option value="">Select player</option>
-                {[...players].filter(p=>p.name?.trim()).sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}{p.team?' · '+teamNames[p.team]:''}</option>)}
+                <option value="">Unassigned — assign later</option>
+                {[...players].filter(p=>p.name?.trim() && (!p.team || p.team===j.team)).sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}{p.team?' · '+teamNames[p.team]:''}</option>)}
                 {j.playerName && !players.some(p=>p.name===j.playerName) && <option value={j.playerName}>{j.playerName} (not in roster)</option>}
               </select>
               <select value={j.team||'team1'} onChange={e=>updateCustomJersey(j.id,'team',e.target.value)} className="soc-input px-2 py-2"><option value="team1">{teamNames.team1}</option><option value="team2">{teamNames.team2}</option></select>
@@ -762,7 +762,7 @@ const HockeyTeamBalancer = () => {
               <button onClick={()=>removeCustomJersey(j.id)} className="text-red-600"><X size={18}/></button>
             </div>)}
             <button onClick={addCustomJersey} className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-lg font-bold">+ Add Custom Jersey</button>
-            <p className="text-xs text-slate-500">Multiple jerseys can be reserved for the same player. They are not available to other players.</p>
+            <p className="text-xs text-slate-500">Player assignment is optional. Add jerseys now and choose recipients after importing the roster. Multiple jerseys can be reserved for the same player.</p>
           </div>}
         </div>
 
